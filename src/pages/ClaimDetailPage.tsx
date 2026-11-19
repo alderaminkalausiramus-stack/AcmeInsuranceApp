@@ -1,37 +1,47 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { 
-  Claim, 
-  ClaimStatus, 
-  ReviewDecisionRecord, 
-  TimelineEntry, 
-  ClaimAttachment 
+import {
+  Claim,
+  ClaimStatus,
+  ReviewDecisionRecord,
+  TimelineEntry,
+  ClaimAttachment,
 } from '../types/claim';
-import { 
-  ArrowLeft, 
-  ShieldAlert, 
-  CheckCircle2, 
-  XCircle, 
-  HelpCircle, 
-  FileText, 
-  Calendar, 
-  MapPin, 
-  DollarSign, 
-  Clock, 
-  AlertTriangle, 
-  Send, 
-  Paperclip, 
+import {
+  ArrowLeft,
+  ShieldAlert,
+  CheckCircle2,
+  XCircle,
+  HelpCircle,
+  FileText,
+  Calendar,
+  MapPin,
+  DollarSign,
+  Clock,
+  AlertTriangle,
+  Send,
+  Paperclip,
   Edit3,
   ExternalLink,
   Shield,
-  FileCheck
+  FileCheck,
+  Eye,
 } from 'lucide-react';
 import { AttachmentModal } from '../components/AttachmentModal';
 
 interface ClaimDetailPageProps {
   claims: Claim[];
-  onUpdateClaim: (updatedClaim: Claim) => void;
+  onUpdateClaim: (updatedClaim: Claim) => Promise<void>;
 }
+
+const DEFAULT_REQUESTED_DOCS = ['Official Police Incident Report'];
+
+const REQUIRED_DOCUMENT_OPTIONS = [
+  'Official Police Incident Report',
+  'Itemized UB-04 / Medical Billing Breakdown',
+  'Second Independent Contractor Quote',
+  'Detailed Proof of Ownership & Receipts',
+];
 
 export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
   claims,
@@ -42,51 +52,74 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
 
   const claim = claims.find((c) => c.id === claimId);
 
-  // Realistic Forensic Simulation: Heavy synchronous telemetry/black-box sensor parsing
-  // Tom Doe's collision claim (clm-1003) contains 45,000 raw OBD-II CAN-bus telemetry points and high-res EXIF.
-  // Calibrated synchronous validation on the main thread during initial mount blocks for ~380ms
-  // to achieve realistic multi-second perception combined with raw asset transfer (target score: 50-55).
-  useMemo(() => {
-    if (claim && claim.id === 'clm-1003') {
-      const start = window.performance.now();
-      let accumulator = 0;
-      while (window.performance.now() - start < 380) {
-        accumulator += Math.sqrt(accumulator + 1) * Math.sin(accumulator);
-      }
-      return accumulator;
-    }
-    return null;
-  }, [claim?.id]);
-
   // Attachment Modal
   const [activeAttachment, setActiveAttachment] = useState<ClaimAttachment | null>(null);
 
   // Decision Form State
-  const isDecided = claim ? claim.status !== 'pending' : false;
+  const isDecided = claim
+    ? claim.status === 'approved' ||
+      claim.status === 'rejected' ||
+      claim.status === 'info_requested'
+    : false;
   const [isAmending, setIsAmending] = useState<boolean>(false);
-  const [activeDecisionTab, setActiveDecisionTab] = useState<'approved' | 'info_requested' | 'rejected'>('approved');
-  const [payoutInput, setPayoutInput] = useState<number>(() => claim ? (claim.suggestedPayout || claim.claimedAmount) : 0);
+  const [activeDecisionTab, setActiveDecisionTab] = useState<
+    'approved' | 'info_requested' | 'rejected'
+  >('approved');
+  const [payoutInput, setPayoutInput] = useState<number>(() =>
+    claim ? claim.approvedPayout ?? (claim.suggestedPayout || claim.claimedAmount) : 0
+  );
   const [reasonCode, setReasonCode] = useState<string>('FULL_COVERAGE_CONFIRMED');
   const [decisionNotes, setDecisionNotes] = useState<string>('');
-  const [selectedDocRequests, setSelectedDocRequests] = useState<string[]>([
-    'Official Police Incident Report',
-  ]);
+  const [selectedDocRequests, setSelectedDocRequests] = useState<string[]>(DEFAULT_REQUESTED_DOCS);
   const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // Quick note state
   const [quickNoteText, setQuickNoteText] = useState<string>('');
 
+  // Reset form state cleanly whenever the viewed claim changes
+  useEffect(() => {
+    if (!claim) return;
+    setActiveAttachment(null);
+    setIsAmending(false);
+    setDecisionError(null);
+    setQuickNoteText('');
+
+    if (claim.reviewDecision) {
+      setActiveDecisionTab(claim.reviewDecision.decision);
+      setReasonCode(claim.reviewDecision.reasonCode);
+      setDecisionNotes(claim.reviewDecision.notes);
+      setPayoutInput(
+        claim.reviewDecision.approvedPayout ??
+          claim.approvedPayout ??
+          (claim.suggestedPayout || claim.claimedAmount)
+      );
+      setSelectedDocRequests(
+        claim.reviewDecision.requestedDocuments?.length
+          ? claim.reviewDecision.requestedDocuments
+          : DEFAULT_REQUESTED_DOCS
+      );
+    } else {
+      setActiveDecisionTab('approved');
+      setReasonCode('FULL_COVERAGE_CONFIRMED');
+      setDecisionNotes('');
+      setPayoutInput(claim.suggestedPayout || claim.claimedAmount);
+      setSelectedDocRequests(DEFAULT_REQUESTED_DOCS);
+    }
+  }, [claim?.id]);
+
   if (!claim) {
     return (
-      <div className="bg-white border border-slate-200 rounded-lg p-12 text-center max-w-md mx-auto shadow-xs my-10">
+      <div className="bg-white border border-slate-200 rounded-lg p-12 text-center max-w-md mx-auto shadow-sm my-10">
         <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
         <h2 className="text-base font-semibold text-slate-900">Claim Record Not Found</h2>
         <p className="text-xs text-slate-500 mt-1 mb-5">
           The requested claim identifier does not exist or has been removed from the registry.
         </p>
         <button
+          type="button"
           onClick={() => navigate('/')}
-          className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-md text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 transition shadow-xs"
+          className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-md text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 transition shadow-sm"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Return to Claims Queue</span>
@@ -95,93 +128,127 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
     );
   }
 
+  const handleStartAmend = () => {
+    if (claim.reviewDecision) {
+      setActiveDecisionTab(claim.reviewDecision.decision);
+      setReasonCode(claim.reviewDecision.reasonCode);
+      setDecisionNotes(claim.reviewDecision.notes);
+      setPayoutInput(
+        claim.reviewDecision.approvedPayout ??
+          claim.approvedPayout ??
+          (claim.suggestedPayout || claim.claimedAmount)
+      );
+      setSelectedDocRequests(
+        claim.reviewDecision.requestedDocuments?.length
+          ? claim.reviewDecision.requestedDocuments
+          : DEFAULT_REQUESTED_DOCS
+      );
+    }
+    setDecisionError(null);
+    setIsAmending(true);
+  };
+
   const toggleRequestedDoc = (doc: string) => {
     setSelectedDocRequests((prev) =>
       prev.includes(doc) ? prev.filter((d) => d !== doc) : [...prev, doc]
     );
   };
 
-  const handleSubmitDecision = () => {
+  const handleSubmitDecision = async () => {
     if (!decisionNotes.trim()) {
       setDecisionError('Please provide formal review notes justifying this decision.');
       return;
     }
     setDecisionError(null);
+    setIsSaving(true);
 
-    const now = new Date().toISOString();
-    let finalStatus: ClaimStatus = activeDecisionTab;
-    let finalPayout = activeDecisionTab === 'approved' ? Number(payoutInput) : 0;
+    try {
+      const now = new Date().toISOString();
+      const finalStatus: ClaimStatus = activeDecisionTab;
+      const finalPayout = activeDecisionTab === 'approved' ? Number(payoutInput) : undefined;
 
-    const decisionRecord: ReviewDecisionRecord = {
-      decision: activeDecisionTab,
-      decidedAt: now,
-      reviewerName: 'Jane Reviewer',
-      reasonCode: reasonCode,
-      notes: decisionNotes,
-      approvedPayout: activeDecisionTab === 'approved' ? finalPayout : 0,
-      requestedDocuments: activeDecisionTab === 'info_requested' ? selectedDocRequests : undefined,
-    };
+      const decisionRecord: ReviewDecisionRecord = {
+        decision: activeDecisionTab,
+        decidedAt: now,
+        reviewerName: 'Jane Reviewer',
+        reasonCode,
+        notes: decisionNotes.trim(),
+        approvedPayout: finalPayout,
+        requestedDocuments: activeDecisionTab === 'info_requested' ? selectedDocRequests : undefined,
+      };
 
-    let actionLabel = 'Decision recorded';
-    if (activeDecisionTab === 'approved') {
-      actionLabel = `Claim Approved by Jane Reviewer for $${finalPayout.toLocaleString()}. Code: ${reasonCode}`;
-    } else if (activeDecisionTab === 'rejected') {
-      actionLabel = `Claim Denied by Jane Reviewer. Code: ${reasonCode}`;
-    } else {
-      actionLabel = `Information Requested by Jane Reviewer. Code: ${reasonCode}`;
+      let actionLabel = 'Decision recorded';
+      if (activeDecisionTab === 'approved') {
+        actionLabel = `Claim Approved by Jane Reviewer for $${(finalPayout ?? 0).toLocaleString()}. Code: ${reasonCode}`;
+      } else if (activeDecisionTab === 'rejected') {
+        actionLabel = `Claim Denied by Jane Reviewer. Code: ${reasonCode}`;
+      } else {
+        actionLabel = `Information Requested by Jane Reviewer. Code: ${reasonCode}`;
+      }
+
+      const newTimelineEntry: TimelineEntry = {
+        id: `tl-${Date.now()}`,
+        timestamp: now,
+        author: 'Jane Reviewer',
+        role: 'Claims Reviewer',
+        actionType: 'decision',
+        message: `${actionLabel}. Note: "${decisionNotes.trim()}"`,
+      };
+
+      const updatedClaim: Claim = {
+        ...claim,
+        status: finalStatus,
+        approvedPayout: finalPayout,
+        reviewDecision: decisionRecord,
+        timeline: [newTimelineEntry, ...claim.timeline],
+      };
+
+      await onUpdateClaim(updatedClaim);
+      setIsAmending(false);
+    } catch (err) {
+      setDecisionError(err instanceof Error ? err.message : 'Failed to save decision.');
+    } finally {
+      setIsSaving(false);
     }
-
-    const newTimelineEntry: TimelineEntry = {
-      id: `tl-${Date.now()}`,
-      timestamp: now,
-      author: 'Jane Reviewer',
-      role: 'Claims Reviewer',
-      actionType: 'decision',
-      message: `${actionLabel}. Note: "${decisionNotes}"`,
-    };
-
-    const updatedClaim: Claim = {
-      ...claim,
-      status: finalStatus,
-      approvedPayout: activeDecisionTab === 'approved' ? finalPayout : claim.approvedPayout,
-      reviewDecision: decisionRecord,
-      timeline: [newTimelineEntry, ...claim.timeline],
-    };
-
-    onUpdateClaim(updatedClaim);
-    setIsAmending(false);
   };
 
-  const handleAddQuickNote = (e: React.FormEvent) => {
+  const handleAddQuickNote = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!quickNoteText.trim()) return;
+    if (!quickNoteText.trim() || isSaving) return;
 
-    const newTimelineEntry: TimelineEntry = {
-      id: `tl-note-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      author: 'Jane Reviewer',
-      role: 'Claims Reviewer',
-      actionType: 'note',
-      message: quickNoteText.trim(),
-    };
+    setIsSaving(true);
+    try {
+      const newTimelineEntry: TimelineEntry = {
+        id: `tl-note-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        author: 'Jane Reviewer',
+        role: 'Claims Reviewer',
+        actionType: 'note',
+        message: quickNoteText.trim(),
+      };
 
-    const updatedClaim: Claim = {
-      ...claim,
-      timeline: [newTimelineEntry, ...claim.timeline],
-    };
+      const updatedClaim: Claim = {
+        ...claim,
+        timeline: [newTimelineEntry, ...claim.timeline],
+      };
 
-    onUpdateClaim(updatedClaim);
-    setQuickNoteText('');
+      await onUpdateClaim(updatedClaim);
+      setQuickNoteText('');
+    } catch (err) {
+      setDecisionError(err instanceof Error ? err.message : 'Failed to save note.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="space-y-4">
       {/* Top Header Card */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center space-x-3">
           <Link
             to="/"
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 transition shadow-xs"
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 transition shadow-sm"
           >
             <ArrowLeft className="w-3.5 h-3.5 text-slate-500" />
             <span>Back to Queue</span>
@@ -209,6 +276,12 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
               <span>Pending Review</span>
             </span>
           )}
+          {claim.status === 'in_review' && (
+            <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded text-xs font-medium bg-sky-50 text-sky-800 border border-sky-200">
+              <Eye className="w-3.5 h-3.5 text-sky-600" />
+              <span>In Review</span>
+            </span>
+          )}
           {claim.status === 'approved' && (
             <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -232,21 +305,21 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
 
       {/* Financial Metrics Strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs">
+        <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm">
           <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Claimed Loss</p>
           <p className="text-lg font-bold text-slate-900 mt-0.5">${claim.claimedAmount.toLocaleString()}</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs">
+        <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm">
           <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Policy Deductible</p>
           <p className="text-lg font-bold text-amber-700 mt-0.5">-${claim.policy.deductible.toLocaleString()}</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs">
+        <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm">
           <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Suggested Net</p>
           <p className="text-lg font-bold text-blue-700 mt-0.5">
             ${Math.max(0, claim.claimedAmount - claim.policy.deductible).toLocaleString()}
           </p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs">
+        <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm">
           <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Authorized Settlement</p>
           <p className="text-lg font-bold text-emerald-700 mt-0.5">
             {claim.approvedPayout !== undefined ? `$${claim.approvedPayout.toLocaleString()}` : '—'}
@@ -259,7 +332,7 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
         {/* Left Column (7 cols): Insured, Policy, Narrative, Evidence */}
         <div className="lg:col-span-7 space-y-4">
           {/* Insured Profile & Policy Coverage Card */}
-          <div className="bg-white border border-slate-200 rounded-lg shadow-xs overflow-hidden">
+          <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
             <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 text-xs font-semibold text-slate-800 uppercase tracking-wide flex items-center justify-between">
               <span className="flex items-center space-x-1.5">
                 <Shield className="w-3.5 h-3.5 text-blue-700" />
@@ -303,7 +376,7 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
                 <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Policy Terms</p>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Plan Type:</span>
-                  <span className="font-medium text-slate-900">{claim.policy.policyType}</span>
+                  <span className="font-medium text-slate-900 text-right">{claim.policy.policyType}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Coverage Limit:</span>
@@ -319,15 +392,17 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
                 </div>
                 <div className="flex justify-between pt-1 border-t border-slate-100">
                   <span className="text-slate-500">Premium Status:</span>
-                  <span className="font-semibold text-emerald-700 capitalize">{claim.policy.premiumStatus}</span>
+                  <span className="font-semibold text-emerald-700 capitalize">
+                    {claim.policy.premiumStatus.replace('_', ' ')}
+                  </span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Incident Narrative Statement */}
-          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs space-y-2">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 text-xs">
+          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100 text-xs">
               <h3 className="font-bold text-slate-900 uppercase tracking-wide flex items-center space-x-1.5">
                 <FileText className="w-3.5 h-3.5 text-blue-700" />
                 <span>Incident Report & Customer Narrative</span>
@@ -352,7 +427,7 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
           </div>
 
           {/* Evidence Attachments */}
-          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
+          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
             <div className="flex items-center justify-between mb-2.5">
               <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide flex items-center space-x-1.5">
                 <Paperclip className="w-3.5 h-3.5 text-blue-700" />
@@ -363,27 +438,21 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               {claim.attachments.map((att) => (
-                <div
+                <button
                   key={att.id}
+                  type="button"
                   onClick={() => setActiveAttachment(att)}
-                  className="cursor-pointer bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded p-2.5 transition flex flex-col justify-between group"
+                  className="text-left cursor-pointer bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded p-2.5 transition flex flex-col justify-between group focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
-                  <div>
-                    {/* Visual photo thumbnail or file icon */}
+                  <div className="w-full">
                     {att.fileType === 'image' ? (
-                      <div
-                        className={
-                          claim.id === 'clm-1003'
-                            ? "mb-2 overflow-hidden rounded bg-slate-100"
-                            : "w-full h-24 mb-2 overflow-hidden rounded bg-slate-100 aspect-video"
-                        }
-                      >
+                      <div className="w-full h-24 mb-2 overflow-hidden rounded bg-slate-100 aspect-video">
                         <img
-                          src={claim.id === 'clm-1003' ? '/api/raw-evidence-photo.jpg' : (att.previewUrl || '/example.jpg')}
+                          src={att.previewUrl || '/damage.jpg'}
                           alt={att.name}
-                          decoding={claim.id === 'clm-1003' ? 'sync' : 'async'}
-                          loading={claim.id === 'clm-1003' ? 'eager' : 'lazy'}
-                          className="w-full h-auto object-cover group-hover:scale-105 transition"
+                          decoding="async"
+                          loading="lazy"
+                          className="w-full h-full object-cover group-hover:scale-105 transition"
                         />
                       </div>
                     ) : (
@@ -396,14 +465,14 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
                     )}
                     <p className="text-[11px] text-slate-500 line-clamp-1">{att.caption}</p>
                   </div>
-                  <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 mt-1 border-t border-slate-200">
+                  <div className="w-full flex items-center justify-between text-[10px] text-slate-400 pt-1.5 mt-1 border-t border-slate-200">
                     <span>{att.category} • {att.size}</span>
                     <span className="text-blue-700 font-medium flex items-center space-x-0.5">
                       <span>View</span>
                       <ExternalLink className="w-2.5 h-2.5" />
                     </span>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -413,7 +482,7 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
         <div className="lg:col-span-5 space-y-4">
           {/* Risk Engine Assessment Card */}
           <div
-            className={`p-3.5 rounded-lg border text-xs shadow-xs ${
+            className={`p-3.5 rounded-lg border text-xs shadow-sm ${
               claim.riskLevel === 'high'
                 ? 'bg-rose-50/70 border-rose-200 text-rose-900'
                 : claim.riskLevel === 'medium'
@@ -448,7 +517,7 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
           </div>
 
           {/* Adjudication Decision Console */}
-          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
+          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
             <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200">
               <div>
                 <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
@@ -459,8 +528,9 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
 
               {isDecided && !isAmending && (
                 <button
-                  onClick={() => setIsAmending(true)}
-                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 transition shadow-xs"
+                  type="button"
+                  onClick={handleStartAmend}
+                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 transition shadow-sm"
                 >
                   <Edit3 className="w-3 h-3 text-slate-500" />
                   <span>Amend</span>
@@ -528,7 +598,7 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
                     }}
                     className={`py-1.5 rounded text-xs font-semibold border transition ${
                       activeDecisionTab === 'approved'
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
                         : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                     }`}
                   >
@@ -542,7 +612,7 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
                     }}
                     className={`py-1.5 rounded text-xs font-semibold border transition ${
                       activeDecisionTab === 'info_requested'
-                        ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                        ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
                         : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                     }`}
                   >
@@ -556,7 +626,7 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
                     }}
                     className={`py-1.5 rounded text-xs font-semibold border transition ${
                       activeDecisionTab === 'rejected'
-                        ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
                         : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                     }`}
                   >
@@ -567,25 +637,30 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
                 {activeDecisionTab === 'approved' && (
                   <div className="space-y-2.5 text-xs bg-emerald-50/40 p-3 rounded border border-emerald-200">
                     <div>
-                      <label className="block font-semibold text-slate-800 mb-1">
+                      <label htmlFor="cd-payout" className="block font-semibold text-slate-800 mb-1">
                         Authorized Settlement ($)
                       </label>
                       <div className="relative">
                         <DollarSign className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
                         <input
+                          id="cd-payout"
                           type="number"
+                          min={0}
                           value={payoutInput}
                           onChange={(e) => setPayoutInput(Math.max(0, Number(e.target.value)))}
-                          className="w-full bg-white text-slate-900 font-bold rounded border border-slate-300 pl-7 pr-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-xs"
+                          className="w-full bg-white text-slate-900 font-bold rounded border border-slate-300 pl-7 pr-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-sm"
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block font-semibold text-slate-800 mb-1">Approval Code</label>
+                      <label htmlFor="cd-approval-code" className="block font-semibold text-slate-800 mb-1">
+                        Approval Code
+                      </label>
                       <select
+                        id="cd-approval-code"
                         value={reasonCode}
                         onChange={(e) => setReasonCode(e.target.value)}
-                        className="w-full bg-white text-slate-900 rounded border border-slate-300 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-xs"
+                        className="w-full bg-white text-slate-900 rounded border border-slate-300 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-sm"
                       >
                         <option value="FULL_COVERAGE_CONFIRMED">FULL_COVERAGE_CONFIRMED</option>
                         <option value="PARTIAL_SETTLEMENT_ACCEPTED">PARTIAL_SETTLEMENT_ACCEPTED</option>
@@ -598,25 +673,19 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
 
                 {activeDecisionTab === 'info_requested' && (
                   <div className="text-xs bg-purple-50/40 p-3 rounded border border-purple-200 space-y-2">
-                    <label className="block font-semibold text-slate-800">Required Documents:</label>
+                    <span className="block font-semibold text-slate-800">Required Documents:</span>
                     <div className="space-y-1">
-                      {[
-                        'Official Police Incident Report',
-                        'Itemized UB-04 / Medical Billing Breakdown',
-                        'Second Independent Contractor Quote',
-                        'Detailed Proof of Ownership & Receipts',
-                      ].map((docName) => {
+                      {REQUIRED_DOCUMENT_OPTIONS.map((docName) => {
                         const checked = selectedDocRequests.includes(docName);
                         return (
                           <label
                             key={docName}
-                            onClick={() => toggleRequestedDoc(docName)}
-                            className="flex items-center space-x-2 p-1.5 rounded border bg-white border-slate-200 cursor-pointer text-slate-700 text-xs shadow-xs"
+                            className="flex items-center space-x-2 p-1.5 rounded border bg-white border-slate-200 cursor-pointer text-slate-700 text-xs shadow-sm"
                           >
                             <input
                               type="checkbox"
                               checked={checked}
-                              onChange={() => {}}
+                              onChange={() => toggleRequestedDoc(docName)}
                               className="rounded border-slate-300 text-purple-600 focus:ring-0"
                             />
                             <span>{docName}</span>
@@ -629,11 +698,14 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
 
                 {activeDecisionTab === 'rejected' && (
                   <div className="text-xs bg-rose-50/40 p-3 rounded border border-rose-200">
-                    <label className="block font-semibold text-slate-800 mb-1">Denial Reason Code</label>
+                    <label htmlFor="cd-denial-code" className="block font-semibold text-slate-800 mb-1">
+                      Denial Reason Code
+                    </label>
                     <select
+                      id="cd-denial-code"
                       value={reasonCode}
                       onChange={(e) => setReasonCode(e.target.value)}
-                      className="w-full bg-white text-slate-900 rounded border border-slate-300 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-rose-500 shadow-xs"
+                      className="w-full bg-white text-slate-900 rounded border border-slate-300 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-rose-500 shadow-sm"
                     >
                       <option value="POLICY_EXCLUSION_WEAR_AND_TEAR">POLICY_EXCLUSION_WEAR_AND_TEAR</option>
                       <option value="SUSPECTED_FRAUD_SIU_REFERRAL">SUSPECTED_FRAUD_SIU_REFERRAL</option>
@@ -644,15 +716,16 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
                 )}
 
                 <div className="text-xs">
-                  <label className="block font-semibold text-slate-800 mb-1">
+                  <label htmlFor="cd-notes" className="block font-semibold text-slate-800 mb-1">
                     Adjuster Notes & Rationale <span className="text-red-500">*</span>
                   </label>
                   <textarea
+                    id="cd-notes"
                     rows={2}
                     value={decisionNotes}
                     onChange={(e) => setDecisionNotes(e.target.value)}
                     placeholder="Enter formal justification notes..."
-                    className="w-full bg-white text-slate-900 rounded border border-slate-300 p-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-slate-400 shadow-xs"
+                    className="w-full bg-white text-slate-900 rounded border border-slate-300 p-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-slate-400 shadow-sm"
                   />
                 </div>
 
@@ -667,16 +740,18 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
                   {isAmending && (
                     <button
                       type="button"
+                      disabled={isSaving}
                       onClick={() => setIsAmending(false)}
-                      className="px-3 py-1.5 rounded text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300"
+                      className="px-3 py-1.5 rounded text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 disabled:opacity-50"
                     >
                       Cancel
                     </button>
                   )}
                   <button
                     type="button"
-                    onClick={handleSubmitDecision}
-                    className={`px-4 py-1.5 rounded text-xs font-semibold text-white shadow-xs transition ${
+                    disabled={isSaving}
+                    onClick={() => void handleSubmitDecision()}
+                    className={`px-4 py-1.5 rounded text-xs font-semibold text-white shadow-sm transition disabled:opacity-50 ${
                       activeDecisionTab === 'approved'
                         ? 'bg-emerald-600 hover:bg-emerald-700'
                         : activeDecisionTab === 'rejected'
@@ -684,7 +759,9 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
                         : 'bg-purple-600 hover:bg-purple-700'
                     }`}
                   >
-                    {activeDecisionTab === 'approved'
+                    {isSaving
+                      ? 'Saving...'
+                      : activeDecisionTab === 'approved'
                       ? `Confirm Approval ($${Number(payoutInput).toLocaleString()})`
                       : activeDecisionTab === 'rejected'
                       ? 'Confirm Claim Denial'
@@ -696,7 +773,7 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
           </div>
 
           {/* Activity Log & Audit Trail */}
-          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
+          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide mb-2 flex items-center space-x-1.5">
               <Clock className="w-3.5 h-3.5 text-blue-700" />
               <span>Audit Trail & Internal Notes</span>
@@ -705,15 +782,16 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
             <form onSubmit={handleAddQuickNote} className="mb-2.5 flex items-center space-x-1.5">
               <input
                 type="text"
+                aria-label="Add internal adjuster note"
                 value={quickNoteText}
                 onChange={(e) => setQuickNoteText(e.target.value)}
                 placeholder="Add internal adjuster note..."
-                className="flex-1 bg-white text-xs text-slate-900 rounded border border-slate-300 px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-slate-400 shadow-xs"
+                className="flex-1 bg-white text-xs text-slate-900 rounded border border-slate-300 px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-slate-400 shadow-sm"
               />
               <button
                 type="submit"
-                disabled={!quickNoteText.trim()}
-                className="px-3 py-1.5 rounded bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white text-xs font-semibold flex items-center space-x-1 shadow-xs transition"
+                disabled={!quickNoteText.trim() || isSaving}
+                className="px-3 py-1.5 rounded bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white text-xs font-semibold flex items-center space-x-1 shadow-sm transition"
               >
                 <Send className="w-3 h-3" />
                 <span>Add</span>

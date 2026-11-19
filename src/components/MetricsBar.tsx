@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Claim } from '../types/claim';
 import { Clock, CheckCircle2, AlertTriangle, DollarSign } from 'lucide-react';
 
@@ -7,21 +7,36 @@ interface MetricsBarProps {
 }
 
 export const MetricsBar: React.FC<MetricsBarProps> = ({ claims }) => {
-  const pendingCount = claims.filter((c) => c.status === 'pending').length;
-  const approvedCount = claims.filter((c) => c.status === 'approved').length;
-  const highRiskCount = claims.filter((c) => c.riskLevel === 'high').length;
-  
-  const totalApprovedPayout = claims
-    .filter((c) => c.status === 'approved')
-    .reduce((sum, c) => sum + (c.approvedPayout ?? c.suggestedPayout ?? 0), 0);
+  const { awaitingReviewCount, approvedCount, highRiskCount, totalApprovedPayout } = useMemo(() => {
+    let awaiting = 0;
+    let approved = 0;
+    let highRisk = 0;
+    let disbursed = 0;
+
+    for (const c of claims) {
+      if (c.status === 'pending' || c.status === 'in_review') awaiting += 1;
+      if (c.status === 'approved') {
+        approved += 1;
+        disbursed += c.approvedPayout ?? c.suggestedPayout ?? 0;
+      }
+      if (c.riskLevel === 'high') highRisk += 1;
+    }
+
+    return {
+      awaitingReviewCount: awaiting,
+      approvedCount: approved,
+      highRiskCount: highRisk,
+      totalApprovedPayout: disbursed,
+    };
+  }, [claims]);
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-      {/* Pending Reviews */}
-      <div className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-xs flex items-center justify-between">
+      {/* Awaiting Review */}
+      <div className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-sm flex items-center justify-between">
         <div>
           <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Awaiting Review</p>
-          <p className="text-xl font-bold text-slate-900 mt-0.5">{pendingCount}</p>
+          <p className="text-xl font-bold text-slate-900 mt-0.5">{awaitingReviewCount}</p>
         </div>
         <div className="w-8 h-8 rounded-md bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700">
           <Clock className="w-4 h-4" />
@@ -29,7 +44,7 @@ export const MetricsBar: React.FC<MetricsBarProps> = ({ claims }) => {
       </div>
 
       {/* High Risk Flags */}
-      <div className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-xs flex items-center justify-between">
+      <div className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-sm flex items-center justify-between">
         <div>
           <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">High Risk Flags</p>
           <p className="text-xl font-bold text-slate-900 mt-0.5">{highRiskCount}</p>
@@ -40,7 +55,7 @@ export const MetricsBar: React.FC<MetricsBarProps> = ({ claims }) => {
       </div>
 
       {/* Approved Settled */}
-      <div className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-xs flex items-center justify-between">
+      <div className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-sm flex items-center justify-between">
         <div>
           <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Approved Claims</p>
           <p className="text-xl font-bold text-slate-900 mt-0.5">{approvedCount}</p>
@@ -51,7 +66,7 @@ export const MetricsBar: React.FC<MetricsBarProps> = ({ claims }) => {
       </div>
 
       {/* Total Approved Disbursed */}
-      <div className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-xs flex items-center justify-between">
+      <div className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-sm flex items-center justify-between">
         <div>
           <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">Total Disbursed</p>
           <p className="text-xl font-bold text-slate-900 mt-0.5">
