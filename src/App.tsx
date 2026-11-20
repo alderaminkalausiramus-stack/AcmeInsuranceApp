@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import * as Sentry from '@sentry/react';
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { Claim } from './types/claim';
 import { fetchClaims, createClaim, updateClaim } from './services/claimsService';
@@ -9,6 +10,8 @@ import { Footer } from './components/Footer';
 import { ClaimsListPage } from './pages/ClaimsListPage';
 import { ClaimDetailPage } from './pages/ClaimDetailPage';
 import { NewClaimModal } from './components/NewClaimModal';
+
+const SentryRoutes = Sentry.withSentryReactRouterV7Routing(Routes);
 
 const AppContent: React.FC = () => {
   const [claims, setClaims] = useState<Claim[]>([]);
@@ -24,6 +27,7 @@ const AppContent: React.FC = () => {
       const loaded = await fetchClaims();
       setClaims(loaded);
     } catch (err) {
+      Sentry.captureException(err);
       setErrorMessage(
         err instanceof Error ? err.message : 'Unable to load claims. Please try again.'
       );
@@ -83,14 +87,14 @@ const AppContent: React.FC = () => {
             </button>
           </div>
         ) : (
-          <Routes>
+          <SentryRoutes>
             <Route path="/" element={<ClaimsListPage claims={claims} />} />
             <Route
               path="/claims/:claimId"
               element={<ClaimDetailPage claims={claims} onUpdateClaim={handleUpdateClaim} />}
             />
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          </SentryRoutes>
         )}
       </main>
 
@@ -107,11 +111,33 @@ const AppContent: React.FC = () => {
   );
 };
 
+const ErrorFallback: React.FC<{ resetError: () => void }> = ({ resetError }) => (
+  <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-slate-900">
+    <div className="bg-white border border-rose-200 rounded-lg p-8 text-center max-w-lg w-full shadow-sm">
+      <AlertTriangle className="w-9 h-9 text-rose-600 mx-auto mb-3" />
+      <h2 className="text-sm font-semibold text-slate-900">Something went wrong</h2>
+      <p className="text-xs text-slate-600 mt-1 mb-4">
+        An unexpected error occurred and has been reported to our monitoring team.
+      </p>
+      <button
+        type="button"
+        onClick={resetError}
+        className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-md text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 transition shadow-sm"
+      >
+        <RefreshCw className="w-3.5 h-3.5" />
+        <span>Try Again</span>
+      </button>
+    </div>
+  </div>
+);
+
 export const App: React.FC = () => {
   return (
-    <BrowserRouter>
-      <AppContent />
-    </BrowserRouter>
+    <Sentry.ErrorBoundary fallback={({ resetError }) => <ErrorFallback resetError={resetError} />}>
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
+    </Sentry.ErrorBoundary>
   );
 };
 

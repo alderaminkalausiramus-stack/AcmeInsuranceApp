@@ -40,6 +40,7 @@ create index if not exists idx_claims_risk_score on public.claims (risk_score de
 create or replace function public.set_claims_updated_at()
 returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
   new.updated_at = now();
@@ -53,9 +54,12 @@ create trigger trg_claims_updated_at
   for each row
   execute function public.set_claims_updated_at();
 
--- Row Level Security (RLS)
+-- Row Level Security (RLS) & Data API grants
 -- Staging open policies (read/insert/update without delete).
--- To restrict to authenticated users later, replace `true` with `auth.role() = 'authenticated'`.
+-- To restrict to authenticated users later, replace `true` with `to authenticated` + ownership checks.
+grant usage on schema public to anon, authenticated;
+grant select, insert, update on table public.claims to anon, authenticated;
+
 alter table public.claims enable row level security;
 
 drop policy if exists "Allow staging read on claims" on public.claims;
