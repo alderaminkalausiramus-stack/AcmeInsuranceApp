@@ -26,12 +26,16 @@ import {
   Shield,
   FileCheck,
   Eye,
+  Trash2,
+  Loader2,
 } from 'lucide-react';
 import { AttachmentModal } from '../components/AttachmentModal';
+import { useAuth } from '../context/AuthContext';
 
 interface ClaimDetailPageProps {
   claims: Claim[];
   onUpdateClaim: (updatedClaim: Claim) => Promise<void>;
+  onDeleteClaim?: (claimId: string) => Promise<void>;
 }
 
 const DEFAULT_REQUESTED_DOCS = ['Official Police Incident Report'];
@@ -46,14 +50,22 @@ const REQUIRED_DOCUMENT_OPTIONS = [
 export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
   claims,
   onUpdateClaim,
+  onDeleteClaim,
 }) => {
   const { claimId } = useParams<{ claimId: string }>();
   const navigate = useNavigate();
+  const { profile, isSuperAdmin } = useAuth();
+
+  const reviewerName = profile?.fullName || 'Claims Adjuster';
+  const reviewerRoleLabel: TimelineEntry['role'] = isSuperAdmin ? 'Superadmin' : 'Claims Reviewer';
 
   const claim = claims.find((c) => c.id === claimId);
 
-  // Attachment Modal
+  // Attachment Modal & Superadmin Delete Modal
   const [activeAttachment, setActiveAttachment] = useState<ClaimAttachment | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Decision Form State
   const isDecided = claim
@@ -170,7 +182,7 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
       const decisionRecord: ReviewDecisionRecord = {
         decision: activeDecisionTab,
         decidedAt: now,
-        reviewerName: 'Jane Reviewer',
+        reviewerName,
         reasonCode,
         notes: decisionNotes.trim(),
         approvedPayout: finalPayout,
@@ -179,18 +191,18 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
 
       let actionLabel = 'Decision recorded';
       if (activeDecisionTab === 'approved') {
-        actionLabel = `Claim Approved by Jane Reviewer for $${(finalPayout ?? 0).toLocaleString()}. Code: ${reasonCode}`;
+        actionLabel = `Claim Approved by ${reviewerName} for $${(finalPayout ?? 0).toLocaleString()}. Code: ${reasonCode}`;
       } else if (activeDecisionTab === 'rejected') {
-        actionLabel = `Claim Denied by Jane Reviewer. Code: ${reasonCode}`;
+        actionLabel = `Claim Denied by ${reviewerName}. Code: ${reasonCode}`;
       } else {
-        actionLabel = `Information Requested by Jane Reviewer. Code: ${reasonCode}`;
+        actionLabel = `Information Requested by ${reviewerName}. Code: ${reasonCode}`;
       }
 
       const newTimelineEntry: TimelineEntry = {
         id: `tl-${Date.now()}`,
         timestamp: now,
-        author: 'Jane Reviewer',
-        role: 'Claims Reviewer',
+        author: reviewerName,
+        role: reviewerRoleLabel,
         actionType: 'decision',
         message: `${actionLabel}. Note: "${decisionNotes.trim()}"`,
       };
@@ -221,8 +233,8 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
       const newTimelineEntry: TimelineEntry = {
         id: `tl-note-${Date.now()}`,
         timestamp: new Date().toISOString(),
-        author: 'Jane Reviewer',
-        role: 'Claims Reviewer',
+        author: reviewerName,
+        role: reviewerRoleLabel,
         actionType: 'note',
         message: quickNoteText.trim(),
       };
@@ -300,8 +312,76 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
               <span>Info Requested</span>
             </span>
           )}
+          {isSuperAdmin && onDeleteClaim && (
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteError(null);
+                setIsDeleteModalOpen(true);
+              }}
+              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-xl w-full max-w-sm p-5 space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="w-9 h-9 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center shrink-0">
+                <Trash2 className="w-4 h-4 text-rose-600" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Delete claim {claim.claimNumber}?</h2>
+                <p className="text-xs text-slate-600 mt-1">
+                  This permanently deletes the claim record and its audit trail from Supabase. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            {deleteError && (
+              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="px-3.5 py-2 rounded-md text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={async () => {
+                  if (!onDeleteClaim) return;
+                  setIsDeleting(true);
+                  setDeleteError(null);
+                  try {
+                    await onDeleteClaim(claim.id);
+                    navigate('/', { replace: true });
+                  } catch (err) {
+                    setDeleteError(err instanceof Error ? err.message : 'Failed to delete claim.');
+                    setIsDeleting(false);
+                  }
+                }}
+                className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-md text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60"
+              >
+                {isDeleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Delete Claim</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Financial Metrics Strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

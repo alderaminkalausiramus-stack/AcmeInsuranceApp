@@ -153,3 +153,23 @@ export async function updateClaim(claim: Claim): Promise<Claim> {
 
   return rowToClaim(data as ClaimRow);
 }
+
+export async function deleteClaim(claimId: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('claims')
+    .delete()
+    .eq('id', claimId)
+    .select('id');
+
+  if (error) {
+    throw new Error(`Failed to delete claim in Supabase: ${error.message}`);
+  }
+
+  if (!data || data.length === 0) {
+    throw new Error('Unable to delete claim. Superadmin privileges are required.');
+  }
+}

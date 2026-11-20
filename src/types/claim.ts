@@ -38,7 +38,7 @@ export interface TimelineEntry {
   id: string;
   timestamp: string;
   author: string;
-  role: 'System' | 'Customer' | 'Senior Adjuster' | 'Risk Engine' | 'Claims Reviewer';
+  role: 'System' | 'Customer' | 'Senior Adjuster' | 'Risk Engine' | 'Claims Reviewer' | 'Superadmin';
   actionType: 'created' | 'status_update' | 'note' | 'risk_flag' | 'info_requested' | 'decision';
   message: string;
 }

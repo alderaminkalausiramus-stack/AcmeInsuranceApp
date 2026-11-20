@@ -3,17 +3,21 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-route
 import * as Sentry from '@sentry/react';
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { Claim } from './types/claim';
-import { fetchClaims, createClaim, updateClaim } from './services/claimsService';
+import { fetchClaims, createClaim, updateClaim, deleteClaim } from './services/claimsService';
 import { exportClaimsToCSV } from './utils/csvExport';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { ClaimsListPage } from './pages/ClaimsListPage';
 import { ClaimDetailPage } from './pages/ClaimDetailPage';
+import { LoginPage } from './pages/LoginPage';
+import { UsersPage } from './pages/UsersPage';
 import { NewClaimModal } from './components/NewClaimModal';
 
 const SentryRoutes = Sentry.withSentryReactRouterV7Routing(Routes);
 
-const AppContent: React.FC = () => {
+const AuthenticatedApp: React.FC = () => {
+  const { profile, isSuperAdmin, signOut } = useAuth();
   const [claims, setClaims] = useState<Claim[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -37,8 +41,12 @@ const AppContent: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    void loadClaims();
-  }, [loadClaims]);
+    if (profile) {
+      void loadClaims();
+    } else {
+      setClaims([]);
+    }
+  }, [profile, loadClaims]);
 
   const handleUpdateClaim = async (updatedClaim: Claim): Promise<void> => {
     const saved = await updateClaim(updatedClaim);
@@ -51,9 +59,18 @@ const AppContent: React.FC = () => {
     navigate(`/claims/${saved.id}`);
   };
 
+  const handleDeleteClaim = async (claimId: string): Promise<void> => {
+    await deleteClaim(claimId);
+    setClaims((prev) => prev.filter((c) => c.id !== claimId));
+  };
+
   const handleExportCSV = () => {
     exportClaimsToCSV(claims);
   };
+
+  if (!profile) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 antialiased">
@@ -62,40 +79,67 @@ const AppContent: React.FC = () => {
         onOpenNewClaimModal={() => setIsNewModalOpen(true)}
         onExportCSV={handleExportCSV}
         totalClaimsCount={claims.length}
+        profile={profile}
+        onSignOut={signOut}
       />
 
       {/* Main Workspace Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {isLoading ? (
-          <div className="bg-white border border-slate-200 rounded-lg p-12 text-center shadow-sm my-8">
-            <Loader2 className="w-7 h-7 text-blue-700 animate-spin mx-auto mb-3" />
-            <p className="text-sm font-semibold text-slate-800">Loading Claims Registry...</p>
-            <p className="text-xs text-slate-500 mt-1">Synchronizing records with the claims datastore.</p>
-          </div>
-        ) : errorMessage ? (
-          <div className="bg-white border border-rose-200 rounded-lg p-8 text-center max-w-lg mx-auto shadow-sm my-8">
-            <AlertTriangle className="w-9 h-9 text-rose-600 mx-auto mb-3" />
-            <h2 className="text-sm font-semibold text-slate-900">Unable to Load Claims</h2>
-            <p className="text-xs text-slate-600 mt-1 mb-4">{errorMessage}</p>
-            <button
-              type="button"
-              onClick={() => void loadClaims()}
-              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-md text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 transition shadow-sm"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Retry</span>
-            </button>
-          </div>
-        ) : (
-          <SentryRoutes>
-            <Route path="/" element={<ClaimsListPage claims={claims} />} />
-            <Route
-              path="/claims/:claimId"
-              element={<ClaimDetailPage claims={claims} onUpdateClaim={handleUpdateClaim} />}
-            />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </SentryRoutes>
-        )}
+        <SentryRoutes>
+          <Route
+            path="/users"
+            element={isSuperAdmin ? <UsersPage /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/"
+            element={
+              isLoading ? (
+                <div className="bg-white border border-slate-200 rounded-lg p-12 text-center shadow-sm my-8">
+                  <Loader2 className="w-7 h-7 text-blue-700 animate-spin mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-slate-800">Loading Claims Registry...</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Synchronizing records with the claims datastore.
+                  </p>
+                </div>
+              ) : errorMessage ? (
+                <div className="bg-white border border-rose-200 rounded-lg p-8 text-center max-w-lg mx-auto shadow-sm my-8">
+                  <AlertTriangle className="w-9 h-9 text-rose-600 mx-auto mb-3" />
+                  <h2 className="text-sm font-semibold text-slate-900">Unable to Load Claims</h2>
+                  <p className="text-xs text-slate-600 mt-1 mb-4">{errorMessage}</p>
+                  <button
+                    type="button"
+                    onClick={() => void loadClaims()}
+                    className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-md text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 transition shadow-sm"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Retry</span>
+                  </button>
+                </div>
+              ) : (
+                <ClaimsListPage claims={claims} />
+              )
+            }
+          />
+          <Route
+            path="/claims/:claimId"
+            element={
+              isLoading ? (
+                <div className="bg-white border border-slate-200 rounded-lg p-12 text-center shadow-sm my-8">
+                  <Loader2 className="w-7 h-7 text-blue-700 animate-spin mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-slate-800">Loading Claim Record...</p>
+                </div>
+              ) : (
+                <ClaimDetailPage
+                  claims={claims}
+                  onUpdateClaim={handleUpdateClaim}
+                  onDeleteClaim={isSuperAdmin ? handleDeleteClaim : undefined}
+                />
+              )
+            }
+          />
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </SentryRoutes>
       </main>
 
       {/* Enterprise Corporate Footer */}
@@ -109,6 +153,33 @@ const AppContent: React.FC = () => {
       />
     </div>
   );
+};
+
+const AppShell: React.FC = () => {
+  const { profile, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="text-center">
+          <Loader2 className="w-7 h-7 text-blue-700 animate-spin mx-auto mb-3" />
+          <p className="text-sm font-semibold text-slate-800">Verifying Session...</p>
+          <p className="text-xs text-slate-500 mt-1">Connecting to Acme Insurance directory.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <SentryRoutes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </SentryRoutes>
+    );
+  }
+
+  return <AuthenticatedApp />;
 };
 
 const ErrorFallback: React.FC<{ resetError: () => void }> = ({ resetError }) => (
@@ -135,7 +206,9 @@ export const App: React.FC = () => {
   return (
     <Sentry.ErrorBoundary fallback={({ resetError }) => <ErrorFallback resetError={resetError} />}>
       <BrowserRouter>
-        <AppContent />
+        <AuthProvider>
+          <AppShell />
+        </AuthProvider>
       </BrowserRouter>
     </Sentry.ErrorBoundary>
   );
