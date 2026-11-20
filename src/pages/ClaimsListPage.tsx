@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Claim, ClaimStatus, ClaimCategory, RiskLevel, ClaimFilterState } from '../types/claim';
 import { MetricsBar } from '../components/MetricsBar';
 import {
@@ -27,14 +27,39 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 
 export const ClaimsListPage: React.FC<ClaimsListPageProps> = ({ claims }) => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const statusParam = searchParams.get('status');
+  const riskParam = searchParams.get('risk');
+
+  const resolveStatus = (val: string | null): ClaimStatus | 'all' =>
+    val === 'pending' ||
+    val === 'in_review' ||
+    val === 'approved' ||
+    val === 'rejected' ||
+    val === 'info_requested'
+      ? val
+      : 'all';
+
+  const resolveRisk = (val: string | null): RiskLevel | 'all' =>
+    val === 'low' || val === 'medium' || val === 'high' ? val : 'all';
 
   const [filters, setFilters] = useState<ClaimFilterState>({
-    status: 'all',
+    status: resolveStatus(statusParam),
     category: 'all',
-    risk: 'all',
+    risk: resolveRisk(riskParam),
     searchQuery: '',
     sortBy: 'date_desc',
   });
+
+  // Sync URL query params when clicking sidebar shortcuts (e.g. Pending Review / High Risk)
+  useEffect(() => {
+    setFilters((prev) => ({
+      ...prev,
+      status: resolveStatus(statusParam),
+      risk: resolveRisk(riskParam),
+    }));
+  }, [statusParam, riskParam]);
 
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);

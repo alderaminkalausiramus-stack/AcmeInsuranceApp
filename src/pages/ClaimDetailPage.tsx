@@ -259,10 +259,10 @@ export const ClaimDetailPage: React.FC<ClaimDetailPageProps> = ({
       <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center space-x-3">
           <Link
-            to="/"
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 transition shadow-sm"
+            to="/claims"
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-foreground bg-background hover:bg-accent border border-border transition shadow-sm"
           >
-            <ArrowLeft className="w-3.5 h-3.5 text-slate-500" />
+            <ArrowLeft className="w-3.5 h-3.5 text-muted-foreground" />
             <span>Back to Queue</span>
           </Link>
           <div className="flex items-center space-x-2 text-xs">

@@ -6,13 +6,15 @@ import { Claim } from './types/claim';
 import { fetchClaims, createClaim, updateClaim, deleteClaim } from './services/claimsService';
 import { exportClaimsToCSV } from './utils/csvExport';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { Header } from './components/Header';
-import { Footer } from './components/Footer';
+import { DashboardLayout } from './components/DashboardLayout';
+import { DashboardPage } from './pages/DashboardPage';
 import { ClaimsListPage } from './pages/ClaimsListPage';
 import { ClaimDetailPage } from './pages/ClaimDetailPage';
 import { LoginPage } from './pages/LoginPage';
 import { UsersPage } from './pages/UsersPage';
 import { NewClaimModal } from './components/NewClaimModal';
+import { Button } from './components/ui/button';
+import { Card } from './components/ui/card';
 
 const SentryRoutes = Sentry.withSentryReactRouterV7Routing(Routes);
 
@@ -72,49 +74,61 @@ const AuthenticatedApp: React.FC = () => {
     return null;
   }
 
+  const loadingPanel = (
+    <Card className="p-12 text-center my-6">
+      <Loader2 className="w-6 h-6 text-foreground animate-spin mx-auto mb-3" />
+      <p className="text-sm font-semibold text-foreground">Loading Claims Registry...</p>
+      <p className="text-xs text-muted-foreground mt-1">
+        Synchronizing records with Supabase.
+      </p>
+    </Card>
+  );
+
+  const errorPanel = (
+    <Card className="p-8 text-center max-w-lg mx-auto my-8 border-rose-200">
+      <AlertTriangle className="w-8 h-8 text-rose-600 mx-auto mb-3" />
+      <h2 className="text-sm font-semibold text-foreground">Unable to Load Claims</h2>
+      <p className="text-xs text-muted-foreground mt-1 mb-4">{errorMessage}</p>
+      <Button type="button" size="sm" onClick={() => void loadClaims()}>
+        <RefreshCw className="w-3.5 h-3.5" />
+        <span>Retry</span>
+      </Button>
+    </Card>
+  );
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 antialiased">
-      {/* Top Corporate Navigation */}
-      <Header
+    <>
+      <DashboardLayout
+        claims={claims}
+        profile={profile}
         onOpenNewClaimModal={() => setIsNewModalOpen(true)}
         onExportCSV={handleExportCSV}
-        totalClaimsCount={claims.length}
-        profile={profile}
         onSignOut={signOut}
-      />
-
-      {/* Main Workspace Body */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      >
         <SentryRoutes>
-          <Route
-            path="/users"
-            element={isSuperAdmin ? <UsersPage /> : <Navigate to="/" replace />}
-          />
           <Route
             path="/"
             element={
               isLoading ? (
-                <div className="bg-white border border-slate-200 rounded-lg p-12 text-center shadow-sm my-8">
-                  <Loader2 className="w-7 h-7 text-blue-700 animate-spin mx-auto mb-3" />
-                  <p className="text-sm font-semibold text-slate-800">Loading Claims Registry...</p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Synchronizing records with the claims datastore.
-                  </p>
-                </div>
+                loadingPanel
               ) : errorMessage ? (
-                <div className="bg-white border border-rose-200 rounded-lg p-8 text-center max-w-lg mx-auto shadow-sm my-8">
-                  <AlertTriangle className="w-9 h-9 text-rose-600 mx-auto mb-3" />
-                  <h2 className="text-sm font-semibold text-slate-900">Unable to Load Claims</h2>
-                  <p className="text-xs text-slate-600 mt-1 mb-4">{errorMessage}</p>
-                  <button
-                    type="button"
-                    onClick={() => void loadClaims()}
-                    className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-md text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 transition shadow-sm"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Retry</span>
-                  </button>
-                </div>
+                errorPanel
+              ) : (
+                <DashboardPage
+                  claims={claims}
+                  profile={profile}
+                  onOpenNewClaimModal={() => setIsNewModalOpen(true)}
+                />
+              )
+            }
+          />
+          <Route
+            path="/claims"
+            element={
+              isLoading ? (
+                loadingPanel
+              ) : errorMessage ? (
+                errorPanel
               ) : (
                 <ClaimsListPage claims={claims} />
               )
@@ -124,10 +138,7 @@ const AuthenticatedApp: React.FC = () => {
             path="/claims/:claimId"
             element={
               isLoading ? (
-                <div className="bg-white border border-slate-200 rounded-lg p-12 text-center shadow-sm my-8">
-                  <Loader2 className="w-7 h-7 text-blue-700 animate-spin mx-auto mb-3" />
-                  <p className="text-sm font-semibold text-slate-800">Loading Claim Record...</p>
-                </div>
+                loadingPanel
               ) : (
                 <ClaimDetailPage
                   claims={claims}
@@ -137,13 +148,14 @@ const AuthenticatedApp: React.FC = () => {
               )
             }
           />
+          <Route
+            path="/users"
+            element={isSuperAdmin ? <UsersPage /> : <Navigate to="/" replace />}
+          />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </SentryRoutes>
-      </main>
-
-      {/* Enterprise Corporate Footer */}
-      <Footer />
+      </DashboardLayout>
 
       {/* File New Claim Modal */}
       <NewClaimModal
@@ -151,7 +163,7 @@ const AuthenticatedApp: React.FC = () => {
         onClose={() => setIsNewModalOpen(false)}
         onCreateClaim={handleCreateClaim}
       />
-    </div>
+    </>
   );
 };
 
@@ -160,11 +172,13 @@ const AppShell: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="text-center">
-          <Loader2 className="w-7 h-7 text-blue-700 animate-spin mx-auto mb-3" />
-          <p className="text-sm font-semibold text-slate-800">Verifying Session...</p>
-          <p className="text-xs text-slate-500 mt-1">Connecting to Acme Insurance directory.</p>
+          <Loader2 className="w-6 h-6 text-foreground animate-spin mx-auto mb-3" />
+          <p className="text-sm font-semibold text-foreground">Verifying Session...</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Connecting to Acme Insurance directory.
+          </p>
         </div>
       </div>
     );
@@ -183,22 +197,18 @@ const AppShell: React.FC = () => {
 };
 
 const ErrorFallback: React.FC<{ resetError: () => void }> = ({ resetError }) => (
-  <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-slate-900">
-    <div className="bg-white border border-rose-200 rounded-lg p-8 text-center max-w-lg w-full shadow-sm">
-      <AlertTriangle className="w-9 h-9 text-rose-600 mx-auto mb-3" />
-      <h2 className="text-sm font-semibold text-slate-900">Something went wrong</h2>
-      <p className="text-xs text-slate-600 mt-1 mb-4">
+  <div className="min-h-screen bg-background flex items-center justify-center p-4 text-foreground">
+    <Card className="p-8 text-center max-w-lg w-full border-rose-200">
+      <AlertTriangle className="w-8 h-8 text-rose-600 mx-auto mb-3" />
+      <h2 className="text-sm font-semibold text-foreground">Something went wrong</h2>
+      <p className="text-xs text-muted-foreground mt-1 mb-4">
         An unexpected error occurred and has been reported to our monitoring team.
       </p>
-      <button
-        type="button"
-        onClick={resetError}
-        className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-md text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 transition shadow-sm"
-      >
+      <Button type="button" size="sm" onClick={resetError}>
         <RefreshCw className="w-3.5 h-3.5" />
         <span>Try Again</span>
-      </button>
-    </div>
+      </Button>
+    </Card>
   </div>
 );
 
