@@ -15,7 +15,7 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { Claim } from '../types/claim';
+import { DashboardSummary } from '../services/claimsService';
 import { UserProfile } from '../types/auth';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -23,7 +23,7 @@ import { Separator } from './ui/separator';
 import { cn } from '../lib/utils';
 
 interface DashboardLayoutProps {
-  claims: Claim[];
+  summary: DashboardSummary | null;
   profile: UserProfile;
   onOpenNewClaimModal: () => void;
   onExportCSV: () => void;
@@ -39,7 +39,7 @@ function getInitials(name: string): string {
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
-  claims,
+  summary,
   profile,
   onOpenNewClaimModal,
   onExportCSV,
@@ -52,15 +52,14 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
   const isSuperAdmin = profile.role === 'superadmin';
 
-  const counts = useMemo(() => {
-    let pending = 0;
-    let highRisk = 0;
-    for (const c of claims) {
-      if (c.status === 'pending' || c.status === 'in_review') pending += 1;
-      if (c.riskLevel === 'high') highRisk += 1;
-    }
-    return { total: claims.length, pending, highRisk };
-  }, [claims]);
+  const counts = useMemo(
+    () => ({
+      total: summary?.totalClaims ?? 0,
+      pending: (summary?.pending ?? 0) + (summary?.inReview ?? 0),
+      highRisk: summary?.highRisk ?? 0,
+    }),
+    [summary]
+  );
 
   const searchParams = new URLSearchParams(location.search);
   const activeStatusParam = searchParams.get('status');
@@ -80,9 +79,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     if (isDashboard) return isSuperAdmin ? 'Admin Dashboard' : 'Adjuster Dashboard';
     if (isUsersPage) return 'User Directory';
     if (isClaimDetail) {
-      const claimId = location.pathname.replace('/claims/', '');
-      const found = claims.find((c) => c.id === claimId);
-      return found ? found.claimNumber : 'Claim Detail';
+      return 'Claim Detail';
     }
     if (isPendingNav) return 'Pending Review';
     if (isHighRiskNav) return 'High Risk Claims';
@@ -94,8 +91,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     isClaimDetail,
     isPendingNav,
     isHighRiskNav,
-    location.pathname,
-    claims,
   ]);
 
   const navLinkClasses = (active: boolean) =>
@@ -160,7 +155,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 <span>Claims Queue</span>
               </span>
               <span className="text-[11px] tabular-nums text-muted-foreground bg-background border border-border rounded px-1.5 py-0.5">
-                {counts.total}
+                {counts.total.toLocaleString('en-US')}
               </span>
             </Link>
 
@@ -174,7 +169,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 <span>Pending Review</span>
               </span>
               <span className="text-[11px] tabular-nums text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
-                {counts.pending}
+                {counts.pending.toLocaleString('en-US')}
               </span>
             </Link>
 
@@ -188,7 +183,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 <span>High Risk Flags</span>
               </span>
               <span className="text-[11px] tabular-nums text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5">
-                {counts.highRisk}
+                {counts.highRisk.toLocaleString('en-US')}
               </span>
             </Link>
           </nav>
@@ -215,7 +210,23 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       </div>
 
       {/* Signed-in User Footer */}
-      <div className="border-t border-sidebar-border p-3 space-y-2.5">
+      <div className="border-t border-sidebar-border p-3 space-y-2">
+        {onNavigate && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              onExportCSV();
+              onNavigate();
+            }}
+            className="w-full justify-center text-xs"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span>Export CSV</span>
+          </Button>
+        )}
+
         <div className="flex items-center gap-2.5 rounded-lg border border-border bg-background p-2.5 shadow-sm">
           <div
             className={cn(
@@ -251,7 +262,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   );
 
   return (
-    <div className="min-h-screen flex bg-background text-foreground antialiased">
+    <div className="min-h-screen flex bg-background text-foreground antialiased overflow-x-hidden">
       {/* Desktop Sidebar */}
       <aside
         className={cn(
@@ -334,15 +345,18 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               <span>Export CSV</span>
             </Button>
 
-            <Button type="button" size="sm" onClick={onOpenNewClaimModal}>
+            <Button type="button" size="sm" onClick={onOpenNewClaimModal} className="shrink-0">
               <Plus className="h-3.5 w-3.5" />
-              <span>New Claim</span>
+              <span className="hidden xs:inline sm:inline">New Claim</span>
+              <span className="sm:hidden">New</span>
             </Button>
           </div>
         </header>
 
         {/* Page Body */}
-        <main className="flex-1 w-full max-w-[1400px] mx-auto px-4 sm:px-6 py-6">{children}</main>
+        <main className="flex-1 w-full max-w-[1400px] mx-auto px-4 sm:px-6 pt-6 pb-20 sm:pb-8">
+          {children}
+        </main>
       </div>
     </div>
   );

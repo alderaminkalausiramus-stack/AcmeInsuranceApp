@@ -26,21 +26,34 @@ import {
   Activity,
   Plus,
   FileSpreadsheet,
+  Loader2,
 } from 'lucide-react';
 import { Claim, ClaimStatus } from '../types/claim';
 import { UserProfile } from '../types/auth';
+import {
+  DashboardSummary,
+  fetchPriorityClaims,
+  fetchRecentActivityClaims,
+} from '../services/claimsService';
 import { listUsers } from '../services/usersService';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table';
 
 interface DashboardPageProps {
-  claims: Claim[];
+  summary: DashboardSummary;
   profile: UserProfile;
+  refreshKey: number;
   onOpenNewClaimModal: () => void;
 }
-
-const MONTH_FORMATTER = new Intl.DateTimeFormat('en-US', { month: 'short', year: '2-digit' });
 
 function formatCurrency(value: number): string {
   return `$${Math.round(value).toLocaleString('en-US')}`;
@@ -62,8 +75,9 @@ function getStatusBadge(status: ClaimStatus) {
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
-  claims,
+  summary,
   profile,
+  refreshKey,
   onOpenNewClaimModal,
 }) => {
   const navigate = useNavigate();
@@ -72,6 +86,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [chartMode, setChartMode] = useState<'count' | 'amount'>('amount');
   const [teamUsers, setTeamUsers] = useState<UserProfile[]>([]);
   const [loadingUsers, setLoadingUsers] = useState<boolean>(isSuperAdmin);
+  const [priorityClaims, setPriorityClaims] = useState<Claim[]>([]);
+  const [loadingPriority, setLoadingPriority] = useState<boolean>(true);
+  const [recentClaims, setRecentClaims] = useState<Claim[]>([]);
+  const [loadingActivity, setLoadingActivity] = useState<boolean>(true);
 
   useEffect(() => {
     if (!isSuperAdmin) return;
@@ -92,106 +110,51 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     };
   }, [isSuperAdmin]);
 
-  const metrics = useMemo(() => {
-    let totalClaimed = 0;
-    let totalDisbursed = 0;
-    let pending = 0;
-    let inReview = 0;
-    let needsInfo = 0;
-    let approved = 0;
-    let denied = 0;
-    let highRisk = 0;
-    let urgent = 0;
+  useEffect(() => {
+    let active = true;
+    setLoadingPriority(true);
+    setLoadingActivity(true);
 
-    const byCategory = {
-      auto: { count: 0, amount: 0 },
-      property: { count: 0, amount: 0 },
-      health: { count: 0, amount: 0 },
+    fetchPriorityClaims(isSuperAdmin ? 'escalations' : 'review', 6)
+      .then((rows) => {
+        if (active) setPriorityClaims(rows);
+      })
+      .catch(() => {
+        if (active) setPriorityClaims([]);
+      })
+      .finally(() => {
+        if (active) setLoadingPriority(false);
+      });
+
+    fetchRecentActivityClaims(12)
+      .then((rows) => {
+        if (active) setRecentClaims(rows);
+      })
+      .catch(() => {
+        if (active) setRecentClaims([]);
+      })
+      .finally(() => {
+        if (active) setLoadingActivity(false);
+      });
+
+    return () => {
+      active = false;
     };
+  }, [isSuperAdmin, refreshKey]);
 
-    const monthMap = new Map<
-      string,
-      { sortKey: string; label: string; claims: number; claimedAmount: number; disbursed: number }
-    >();
-
-    for (const c of claims) {
-      totalClaimed += c.claimedAmount;
-      if (c.status === 'pending') pending += 1;
-      if (c.status === 'in_review') inReview += 1;
-      if (c.status === 'info_requested') needsInfo += 1;
-      if (c.status === 'approved') {
-        approved += 1;
-        totalDisbursed += c.approvedPayout ?? c.suggestedPayout ?? 0;
-      }
-      if (c.status === 'rejected') denied += 1;
-      if (c.riskLevel === 'high') highRisk += 1;
-      if (c.priority === 'urgent') urgent += 1;
-
-      if (byCategory[c.category]) {
-        byCategory[c.category].count += 1;
-        byCategory[c.category].amount += c.claimedAmount;
-      }
-
-      const dt = new Date(c.submittedAt);
-      if (!Number.isNaN(dt.getTime())) {
-        const sortKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
-        const existing = monthMap.get(sortKey) ?? {
-          sortKey,
-          label: MONTH_FORMATTER.format(dt),
-          claims: 0,
-          claimedAmount: 0,
-          disbursed: 0,
-        };
-        existing.claims += 1;
-        existing.claimedAmount += c.claimedAmount;
-        if (c.status === 'approved') {
-          existing.disbursed += c.approvedPayout ?? c.suggestedPayout ?? 0;
-        }
-        monthMap.set(sortKey, existing);
-      }
-    }
-
-    const monthlySeries = Array.from(monthMap.values()).sort((a, b) =>
-      a.sortKey.localeCompare(b.sortKey)
-    );
-
-    const decided = approved + denied;
-    const approvalRate = decided > 0 ? Math.round((approved / decided) * 100) : 0;
-    const avgClaim = claims.length > 0 ? totalClaimed / claims.length : 0;
+  const metrics = useMemo(() => {
+    const decided = summary.approved + summary.denied;
+    const approvalRate = decided > 0 ? Math.round((summary.approved / decided) * 100) : 0;
+    const avgClaim = summary.totalClaims > 0 ? summary.totalClaimed / summary.totalClaims : 0;
 
     return {
-      totalClaimed,
-      totalDisbursed,
-      awaitingReview: pending + inReview,
-      pending,
-      inReview,
-      needsInfo,
-      approved,
-      denied,
-      highRisk,
-      urgent,
+      ...summary,
+      awaitingReview: summary.pending + summary.inReview,
       approvalRate,
       avgClaim,
-      byCategory,
-      monthlySeries,
     };
-  }, [claims]);
+  }, [summary]);
 
-  // Actionable queue list (escalations for Superadmin, active review queue for Normal User)
-  const priorityClaims = useMemo(() => {
-    const filtered = isSuperAdmin
-      ? claims.filter((c) => c.riskLevel === 'high' || c.priority === 'urgent')
-      : claims.filter((c) => c.status === 'pending' || c.status === 'in_review');
-
-    return [...filtered]
-      .sort((a, b) => {
-        if (b.riskScore !== a.riskScore) return b.riskScore - a.riskScore;
-        return new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime();
-      })
-      .slice(0, 6);
-  }, [claims, isSuperAdmin]);
-
-  // Live chronological activity feed extracted from claims timelines
   const recentActivity = useMemo(() => {
     const entries: Array<{
       id: string;
@@ -203,9 +166,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       timestamp: string;
     }> = [];
 
-    for (const c of claims) {
+    for (const c of recentClaims) {
       for (const item of c.timeline) {
-        if (item.actionType === 'decision' || item.actionType === 'note' || item.actionType === 'info_requested') {
+        if (
+          item.actionType === 'decision' ||
+          item.actionType === 'note' ||
+          item.actionType === 'info_requested' ||
+          item.actionType === 'created'
+        ) {
           entries.push({
             id: `${c.id}-${item.id}`,
             claimId: c.id,
@@ -222,7 +190,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     return entries
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, 5);
-  }, [claims]);
+  }, [recentClaims]);
 
   const firstName = profile.fullName.split(' ')[0] || profile.fullName;
   const activeUsersCount = teamUsers.filter((u) => u.isActive).length;
@@ -294,7 +262,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   {formatCurrency(metrics.totalClaimed)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Across {claims.length} claims &middot; Avg {formatCurrency(metrics.avgClaim)}
+                  Across {metrics.totalClaims.toLocaleString('en-US')} claims &middot; Avg{' '}
+                  {formatCurrency(metrics.avgClaim)}
                 </p>
               </CardContent>
             </Card>
@@ -311,7 +280,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   {formatCurrency(metrics.totalDisbursed)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {metrics.approved} approved &middot; {metrics.approvalRate}% adjudication approval rate
+                  {metrics.approved.toLocaleString('en-US')} approved &middot;{' '}
+                  {metrics.approvalRate}% adjudication approval rate
                 </p>
               </CardContent>
             </Card>
@@ -324,9 +294,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <AlertTriangle className="h-4 w-4 text-rose-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold tabular-nums">{metrics.awaitingReview}</div>
+                <div className="text-2xl font-bold tabular-nums">
+                  {metrics.awaitingReview.toLocaleString('en-US')}
+                </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {metrics.highRisk} high-risk flags &middot; {metrics.urgent} urgent priority
+                  {metrics.highRisk.toLocaleString('en-US')} high-risk flags &middot;{' '}
+                  {metrics.urgent.toLocaleString('en-US')} urgent priority
                 </p>
               </CardContent>
             </Card>
@@ -363,9 +336,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <Clock className="h-4 w-4 text-amber-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold tabular-nums">{metrics.awaitingReview}</div>
+                <div className="text-2xl font-bold tabular-nums">
+                  {metrics.awaitingReview.toLocaleString('en-US')}
+                </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {metrics.pending} pending &middot; {metrics.inReview} currently in review
+                  {metrics.pending.toLocaleString('en-US')} pending &middot;{' '}
+                  {metrics.inReview.toLocaleString('en-US')} currently in review
                 </p>
               </CardContent>
             </Card>
@@ -378,9 +354,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <AlertTriangle className="h-4 w-4 text-rose-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold tabular-nums">{metrics.highRisk}</div>
+                <div className="text-2xl font-bold tabular-nums">
+                  {metrics.highRisk.toLocaleString('en-US')}
+                </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {metrics.urgent} marked urgent &middot; requires secondary review
+                  {metrics.urgent.toLocaleString('en-US')} marked urgent &middot; requires secondary review
                 </p>
               </CardContent>
             </Card>
@@ -393,7 +371,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <HelpCircle className="h-4 w-4 text-violet-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold tabular-nums">{metrics.needsInfo}</div>
+                <div className="text-2xl font-bold tabular-nums">
+                  {metrics.needsInfo.toLocaleString('en-US')}
+                </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Awaiting policyholder documentation
                 </p>
@@ -412,7 +392,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   {formatCurrency(metrics.totalDisbursed)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {metrics.approved} claims settled &middot; {metrics.denied} denied
+                  {metrics.approved.toLocaleString('en-US')} claims settled &middot;{' '}
+                  {metrics.denied.toLocaleString('en-US')} denied
                 </p>
               </CardContent>
             </Card>
@@ -423,14 +404,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       {/* Analytics Row — Interactive Recharts + Portfolio Breakdown */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-7">
         <Card className="lg:col-span-4">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-4">
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4">
             <div>
               <CardTitle>Claims Intake &amp; Disbursement</CardTitle>
               <CardDescription className="mt-1">
-                Monthly trend derived from live Supabase claims records.
+                Monthly trend aggregated across all {metrics.totalClaims.toLocaleString('en-US')} live records.
               </CardDescription>
             </div>
-            <div className="inline-flex items-center rounded-md border border-border bg-muted p-0.5 text-xs">
+            <div className="inline-flex items-center self-start sm:self-auto rounded-md border border-border bg-muted p-0.5 text-xs shrink-0">
               <button
                 type="button"
                 onClick={() => setChartMode('amount')}
@@ -484,7 +465,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       tickLine={false}
                       axisLine={false}
                       tick={{ fontSize: 11, fill: '#71717a' }}
-                      tickFormatter={(v) => `$${Math.round(Number(v) / 1000)}k`}
+                      tickFormatter={(v) => {
+                        const num = Number(v);
+                        if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(1)}M`;
+                        return `$${Math.round(num / 1000)}k`;
+                      }}
                     />
                     <Tooltip
                       contentStyle={{
@@ -540,7 +525,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                         fontSize: '12px',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
                       }}
-                      formatter={(val: unknown) => [`${val} claims`, 'Submitted']}
+                      formatter={(val: unknown) => [
+                        `${Number(val ?? 0).toLocaleString('en-US')} claims`,
+                        'Submitted',
+                      ]}
                     />
                     <Bar dataKey="claims" fill="#18181b" radius={[6, 6, 0, 0]} maxBarSize={38} />
                   </BarChart>
@@ -559,7 +547,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5 flex-1">
-            {/* Lines of Business */}
             <div className="space-y-3">
               {[
                 {
@@ -585,20 +572,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 },
               ].map((lob) => {
                 const stat = metrics.byCategory[lob.key];
-                const pct = claims.length > 0 ? Math.round((stat.count / claims.length) * 100) : 0;
+                const pct =
+                  metrics.totalClaims > 0 ? Math.round((stat.count / metrics.totalClaims) * 100) : 0;
                 const Icon = lob.icon;
                 return (
                   <div key={lob.key} className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center justify-between text-xs gap-2">
                       <span className="flex items-center gap-2 font-medium text-foreground">
                         <span className={`inline-flex p-1 rounded border ${lob.pill}`}>
                           <Icon className="h-3 w-3" />
                         </span>
                         <span>{lob.label}</span>
                       </span>
-                      <span className="tabular-nums text-muted-foreground">
-                        <strong className="text-foreground">{stat.count}</strong> ({pct}%) &middot;{' '}
-                        {formatCurrency(stat.amount)}
+                      <span className="tabular-nums text-muted-foreground text-right">
+                        <strong className="text-foreground">
+                          {stat.count.toLocaleString('en-US')}
+                        </strong>{' '}
+                        ({pct}%)
                       </span>
                     </div>
                     <div className="h-2 w-full rounded-full bg-secondary overflow-hidden">
@@ -612,7 +602,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               })}
             </div>
 
-            {/* Status Summary Grid */}
             <div className="pt-3 border-t border-border">
               <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2.5">
                 Status Mix
@@ -638,7 +627,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   >
                     <span className="text-[11px] text-muted-foreground">{item.label}</span>
                     <span className="text-xs font-semibold tabular-nums text-foreground">
-                      {item.count}
+                      {item.count.toLocaleString('en-US')}
                     </span>
                   </button>
                 ))}
@@ -650,7 +639,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       {/* Bottom Operational Row — Actionable Claims Table + Team / Activity */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-7">
-        {/* Actionable Claims Table */}
         <Card className="lg:col-span-4">
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <div>
@@ -671,45 +659,37 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </Link>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-t border-border">
-                <thead>
-                  <tr className="border-b border-border bg-muted/40 text-[11px] font-medium text-muted-foreground">
-                    <th className="py-2.5 px-4">Claim</th>
-                    <th className="py-2.5 px-3">Customer</th>
-                    <th className="py-2.5 px-3">Status</th>
-                    <th className="py-2.5 px-3 text-right">Amount</th>
-                    <th className="py-2.5 px-4 text-right">Risk</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border text-xs">
+            {loadingPriority ? (
+              <div className="py-10 text-center text-xs text-muted-foreground border-t border-border">
+                <Loader2 className="h-4 w-4 animate-spin mx-auto mb-1.5" />
+                Loading queue...
+              </div>
+            ) : priorityClaims.length === 0 ? (
+              <div className="py-10 text-center text-xs text-muted-foreground border-t border-border">
+                No priority claims in this queue right now.
+              </div>
+            ) : (
+              <>
+                {/* Mobile Stacked Cards */}
+                <div className="md:hidden divide-y divide-border border-t border-border">
                   {priorityClaims.map((claim) => (
-                    <tr
+                    <button
                       key={claim.id}
+                      type="button"
                       onClick={() => navigate(`/claims/${claim.id}`)}
-                      className="cursor-pointer hover:bg-muted/40 transition-colors"
+                      className="w-full text-left p-4 hover:bg-muted/40 transition-colors space-y-2"
                     >
-                      <td className="py-3 px-4">
-                        <p className="font-mono font-semibold text-foreground">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-xs font-semibold text-foreground">
                           {claim.claimNumber}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground truncate max-w-[180px]">
-                          {claim.title}
-                        </p>
-                      </td>
-                      <td className="py-3 px-3">
-                        <p className="font-medium text-foreground">{claim.customer.name}</p>
-                        <p className="text-[11px] text-muted-foreground capitalize">
-                          {claim.category}
-                        </p>
-                      </td>
-                      <td className="py-3 px-3 whitespace-nowrap">
+                        </span>
                         {getStatusBadge(claim.status)}
-                      </td>
-                      <td className="py-3 px-3 text-right font-medium tabular-nums">
-                        {formatCurrency(claim.claimedAmount)}
-                      </td>
-                      <td className="py-3 px-4 text-right">
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{claim.customer.name}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-1">{claim.title}</p>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 pt-0.5">
                         <Badge
                           variant={
                             claim.riskLevel === 'high'
@@ -720,25 +700,79 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           }
                           className="tabular-nums"
                         >
-                          {claim.riskScore}
+                          Risk {claim.riskScore}
                         </Badge>
-                      </td>
-                    </tr>
+                        <span className="text-sm font-semibold tabular-nums text-foreground">
+                          {formatCurrency(claim.claimedAmount)}
+                        </span>
+                      </div>
+                    </button>
                   ))}
-                  {priorityClaims.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="py-8 text-center text-xs text-muted-foreground">
-                        No priority claims in this queue right now.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                </div>
+
+                {/* Desktop shadcn Table */}
+                <div className="hidden md:block border-t border-border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead>Claim</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="text-right">Risk</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {priorityClaims.map((claim) => (
+                        <TableRow
+                          key={claim.id}
+                          onClick={() => navigate(`/claims/${claim.id}`)}
+                          className="cursor-pointer"
+                        >
+                          <TableCell className="py-3">
+                            <p className="font-mono font-semibold text-foreground">
+                              {claim.claimNumber}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground truncate max-w-[180px]">
+                              {claim.title}
+                            </p>
+                          </TableCell>
+                          <TableCell className="py-3">
+                            <p className="font-medium text-foreground">{claim.customer.name}</p>
+                            <p className="text-[11px] text-muted-foreground capitalize">
+                              {claim.category}
+                            </p>
+                          </TableCell>
+                          <TableCell className="py-3 whitespace-nowrap">
+                            {getStatusBadge(claim.status)}
+                          </TableCell>
+                          <TableCell className="py-3 text-right font-medium tabular-nums">
+                            {formatCurrency(claim.claimedAmount)}
+                          </TableCell>
+                          <TableCell className="py-3 text-right">
+                            <Badge
+                              variant={
+                                claim.riskLevel === 'high'
+                                  ? 'destructive'
+                                  : claim.riskLevel === 'medium'
+                                    ? 'warning'
+                                    : 'secondary'
+                              }
+                              className="tabular-nums"
+                            >
+                              {claim.riskScore}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
-        {/* Right Column: Superadmin Team Snapshot + Recent Activity */}
         <div className="lg:col-span-3 space-y-4">
           {isSuperAdmin && (
             <Card>
@@ -802,31 +836,34 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {recentActivity.map((event) => (
-                <button
-                  key={event.id}
-                  type="button"
-                  onClick={() => navigate(`/claims/${event.claimId}`)}
-                  className="w-full text-left flex items-start gap-2.5 rounded-md p-2 -mx-2 hover:bg-muted/60 transition-colors"
-                >
-                  <span className="mt-1 h-2 w-2 rounded-full bg-primary shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-foreground truncate">
-                        {event.author}
-                      </span>
-                      <span className="font-mono text-[10px] text-muted-foreground shrink-0">
-                        {event.claimNumber}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">
-                      {event.message}
-                    </p>
-                  </div>
-                </button>
-              ))}
-              {recentActivity.length === 0 && (
+              {loadingActivity ? (
+                <p className="text-xs text-muted-foreground py-2">Loading recent activity...</p>
+              ) : recentActivity.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No recent activity recorded.</p>
+              ) : (
+                recentActivity.map((event) => (
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => navigate(`/claims/${event.claimId}`)}
+                    className="w-full text-left flex items-start gap-2.5 rounded-md p-2 -mx-2 hover:bg-muted/60 transition-colors"
+                  >
+                    <span className="mt-1 h-2 w-2 rounded-full bg-primary shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-foreground truncate">
+                          {event.author}
+                        </span>
+                        <span className="font-mono text-[10px] text-muted-foreground shrink-0">
+                          {event.claimNumber}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">
+                        {event.message}
+                      </p>
+                    </div>
+                  </button>
+                ))
               )}
             </CardContent>
           </Card>

@@ -3,7 +3,14 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-route
 import * as Sentry from '@sentry/react';
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { Claim } from './types/claim';
-import { fetchClaims, createClaim, updateClaim, deleteClaim } from './services/claimsService';
+import {
+  DashboardSummary,
+  fetchDashboardSummary,
+  fetchClaimsForExport,
+  createClaim,
+  updateClaim,
+  deleteClaim,
+} from './services/claimsService';
 import { exportClaimsToCSV } from './utils/csvExport';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DashboardLayout } from './components/DashboardLayout';
@@ -20,54 +27,63 @@ const SentryRoutes = Sentry.withSentryReactRouterV7Routing(Routes);
 
 const AuthenticatedApp: React.FC = () => {
   const { profile, isSuperAdmin, signOut } = useAuth();
-  const [claims, setClaims] = useState<Claim[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [isLoadingSummary, setIsLoadingSummary] = useState<boolean>(true);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState<number>(0);
   const [isNewModalOpen, setIsNewModalOpen] = useState<boolean>(false);
   const navigate = useNavigate();
 
-  const loadClaims = useCallback(async () => {
-    setIsLoading(true);
-    setErrorMessage(null);
+  const loadSummary = useCallback(async () => {
+    setIsLoadingSummary(true);
+    setSummaryError(null);
     try {
-      const loaded = await fetchClaims();
-      setClaims(loaded);
+      const loaded = await fetchDashboardSummary();
+      setSummary(loaded);
     } catch (err) {
       Sentry.captureException(err);
-      setErrorMessage(
-        err instanceof Error ? err.message : 'Unable to load claims. Please try again.'
+      setSummaryError(
+        err instanceof Error ? err.message : 'Unable to load claims summary. Please try again.'
       );
     } finally {
-      setIsLoading(false);
+      setIsLoadingSummary(false);
     }
   }, []);
 
   useEffect(() => {
     if (profile) {
-      void loadClaims();
+      void loadSummary();
     } else {
-      setClaims([]);
+      setSummary(null);
     }
-  }, [profile, loadClaims]);
+  }, [profile, loadSummary]);
 
-  const handleUpdateClaim = async (updatedClaim: Claim): Promise<void> => {
+  const handleUpdateClaim = async (updatedClaim: Claim): Promise<Claim> => {
     const saved = await updateClaim(updatedClaim);
-    setClaims((prev) => prev.map((c) => (c.id === saved.id ? saved : c)));
+    setRefreshKey((k) => k + 1);
+    void loadSummary();
+    return saved;
   };
 
   const handleCreateClaim = async (newClaim: Claim): Promise<void> => {
     const saved = await createClaim(newClaim);
-    setClaims((prev) => [saved, ...prev]);
+    setRefreshKey((k) => k + 1);
+    void loadSummary();
     navigate(`/claims/${saved.id}`);
   };
 
   const handleDeleteClaim = async (claimId: string): Promise<void> => {
     await deleteClaim(claimId);
-    setClaims((prev) => prev.filter((c) => c.id !== claimId));
+    setRefreshKey((k) => k + 1);
+    void loadSummary();
   };
 
   const handleExportCSV = () => {
-    exportClaimsToCSV(claims);
+    void fetchClaimsForExport(1000)
+      .then((rows) => exportClaimsToCSV(rows))
+      .catch((err) => {
+        Sentry.captureException(err);
+      });
   };
 
   if (!profile) {
@@ -88,8 +104,8 @@ const AuthenticatedApp: React.FC = () => {
     <Card className="p-8 text-center max-w-lg mx-auto my-8 border-rose-200">
       <AlertTriangle className="w-8 h-8 text-rose-600 mx-auto mb-3" />
       <h2 className="text-sm font-semibold text-foreground">Unable to Load Claims</h2>
-      <p className="text-xs text-muted-foreground mt-1 mb-4">{errorMessage}</p>
-      <Button type="button" size="sm" onClick={() => void loadClaims()}>
+      <p className="text-xs text-muted-foreground mt-1 mb-4">{summaryError}</p>
+      <Button type="button" size="sm" onClick={() => void loadSummary()}>
         <RefreshCw className="w-3.5 h-3.5" />
         <span>Retry</span>
       </Button>
@@ -99,7 +115,7 @@ const AuthenticatedApp: React.FC = () => {
   return (
     <>
       <DashboardLayout
-        claims={claims}
+        summary={summary}
         profile={profile}
         onOpenNewClaimModal={() => setIsNewModalOpen(true)}
         onExportCSV={handleExportCSV}
@@ -109,43 +125,33 @@ const AuthenticatedApp: React.FC = () => {
           <Route
             path="/"
             element={
-              isLoading ? (
+              isLoadingSummary && !summary ? (
                 loadingPanel
-              ) : errorMessage ? (
+              ) : summaryError && !summary ? (
                 errorPanel
-              ) : (
+              ) : summary ? (
                 <DashboardPage
-                  claims={claims}
+                  summary={summary}
                   profile={profile}
+                  refreshKey={refreshKey}
                   onOpenNewClaimModal={() => setIsNewModalOpen(true)}
                 />
+              ) : (
+                loadingPanel
               )
             }
           />
           <Route
             path="/claims"
-            element={
-              isLoading ? (
-                loadingPanel
-              ) : errorMessage ? (
-                errorPanel
-              ) : (
-                <ClaimsListPage claims={claims} />
-              )
-            }
+            element={<ClaimsListPage summary={summary} refreshKey={refreshKey} />}
           />
           <Route
             path="/claims/:claimId"
             element={
-              isLoading ? (
-                loadingPanel
-              ) : (
-                <ClaimDetailPage
-                  claims={claims}
-                  onUpdateClaim={handleUpdateClaim}
-                  onDeleteClaim={isSuperAdmin ? handleDeleteClaim : undefined}
-                />
-              )
+              <ClaimDetailPage
+                onUpdateClaim={handleUpdateClaim}
+                onDeleteClaim={isSuperAdmin ? handleDeleteClaim : undefined}
+              />
             }
           />
           <Route

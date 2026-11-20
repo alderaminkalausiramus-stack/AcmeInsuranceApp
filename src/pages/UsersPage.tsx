@@ -11,7 +11,6 @@ import {
   Edit3,
   Trash2,
   Power,
-  X,
   CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -21,6 +20,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Select } from '../components/ui/select';
+import { Dialog } from '../components/ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table';
 
 interface UserFormState {
   email: string;
@@ -56,17 +66,14 @@ export const UsersPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
 
-  // Create Modal
   const [isCreateOpen, setIsCreateOpen] = useState<boolean>(false);
   const [createForm, setCreateForm] = useState<UserFormState>(INITIAL_CREATE_FORM);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
-  // Edit Modal
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [editForm, setEditForm] = useState<UserFormState>(INITIAL_CREATE_FORM);
 
-  // Delete Confirmation Modal
   const [deletingUser, setDeletingUser] = useState<UserProfile | null>(null);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
 
@@ -130,13 +137,17 @@ export const UsersPage: React.FC = () => {
       const created = await createUser({
         email: createForm.email.trim(),
         fullName: createForm.fullName.trim(),
-        title: createForm.title.trim() || (createForm.role === 'superadmin' ? 'System Administrator' : 'Claims Adjuster'),
+        title:
+          createForm.title.trim() ||
+          (createForm.role === 'superadmin' ? 'System Administrator' : 'Claims Adjuster'),
         role: createForm.role,
         password: createForm.password,
       });
       setUsers((prev) => [...prev, created]);
       setIsCreateOpen(false);
-      showToast(`Created ${created.role === 'superadmin' ? 'Superadmin' : 'Claims Adjuster'} account for ${created.fullName}.`);
+      showToast(
+        `Created ${created.role === 'superadmin' ? 'Superadmin' : 'Claims Adjuster'} account for ${created.fullName}.`
+      );
     } catch (err) {
       setModalError(err instanceof Error ? err.message : 'Failed to create user.');
     } finally {
@@ -224,12 +235,12 @@ export const UsersPage: React.FC = () => {
   return (
     <div className="space-y-5">
       {/* Page Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-foreground">User Management</h1>
             <Badge variant="default">
-              <ShieldCheck className="w-3 h-3" />
+              <ShieldCheck className="h-3 w-3" />
               <span>Superadmin Console</span>
             </Badge>
           </div>
@@ -246,23 +257,23 @@ export const UsersPage: React.FC = () => {
             onClick={() => void loadUsers()}
             disabled={isLoading}
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </Button>
 
           <Button type="button" size="sm" onClick={handleOpenCreate}>
-            <UserPlus className="w-3.5 h-3.5" />
+            <UserPlus className="h-3.5 w-3.5" />
             <span>Add User</span>
           </Button>
         </div>
       </div>
 
       {/* KPI Strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground">Total Users</CardTitle>
-            <Users className="w-4 h-4 text-muted-foreground" />
+            <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums text-foreground">{stats.total}</p>
@@ -272,7 +283,7 @@ export const UsersPage: React.FC = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground">Superadmins</CardTitle>
-            <ShieldCheck className="w-4 h-4 text-foreground" />
+            <ShieldCheck className="h-4 w-4 text-foreground" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums text-foreground">{stats.superadmins}</p>
@@ -281,8 +292,8 @@ export const UsersPage: React.FC = () => {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Claims Adjusters</CardTitle>
-            <UserCheck className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-xs font-medium text-muted-foreground">Adjusters</CardTitle>
+            <UserCheck className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums text-foreground">{stats.adjusters}</p>
@@ -291,8 +302,8 @@ export const UsersPage: React.FC = () => {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Active Accounts</CardTitle>
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <CardTitle className="text-xs font-medium text-muted-foreground">Active</CardTitle>
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums text-emerald-700">{stats.active}</p>
@@ -300,50 +311,49 @@ export const UsersPage: React.FC = () => {
         </Card>
       </div>
 
-      {/* Alerts */}
       {successMessage && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-800 flex items-center space-x-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-800 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
           <span>{successMessage}</span>
         </div>
       )}
 
       {errorMessage && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs text-rose-700 flex items-center space-x-2">
-          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs text-rose-700 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
           <span>{errorMessage}</span>
         </div>
       )}
 
-      {/* Search & Filter Toolbar + Table */}
+      {/* Directory Card */}
       <Card className="overflow-hidden">
-        <div className="p-3.5 border-b border-border flex flex-wrap items-center justify-between gap-3 bg-muted/30">
-          <div className="relative flex-1 min-w-[220px] max-w-sm">
-            <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+        <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/20">
+          <div className="relative flex-1 sm:max-w-sm">
+            <Search className="h-4 w-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <Input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by name, email, or title..."
-              className="pl-8 h-8 text-xs bg-background"
+              className="pl-9 bg-background"
             />
           </div>
 
-          <div className="inline-flex items-center rounded-md border border-border bg-muted p-0.5">
+          <div className="grid grid-cols-3 sm:inline-flex items-center rounded-md border border-border bg-muted p-0.5">
             {(['all', 'superadmin', 'user'] as const).map((option) => {
               const label =
                 option === 'all'
                   ? `All (${stats.total})`
                   : option === 'superadmin'
-                    ? `Superadmins (${stats.superadmins})`
-                    : `Adjusters (${stats.adjusters})`;
+                    ? `Admin (${stats.superadmins})`
+                    : `Adjuster (${stats.adjusters})`;
               const isSelected = roleFilter === option;
               return (
                 <button
                   key={option}
                   type="button"
                   onClick={() => setRoleFilter(option)}
-                  className={`px-2.5 py-1 rounded text-xs font-medium transition ${
+                  className={`px-2.5 py-1.5 sm:py-1 rounded text-xs font-medium transition ${
                     isSelected
                       ? 'bg-background text-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground'
@@ -358,397 +368,438 @@ export const UsersPage: React.FC = () => {
 
         {isLoading ? (
           <div className="p-12 text-center">
-            <Loader2 className="w-6 h-6 text-blue-700 animate-spin mx-auto mb-2" />
-            <p className="text-xs font-medium text-slate-600">Loading directory...</p>
+            <Loader2 className="h-5 w-5 text-foreground animate-spin mx-auto mb-2" />
+            <p className="text-xs font-medium text-muted-foreground">Loading directory...</p>
           </div>
         ) : filteredUsers.length === 0 ? (
           <div className="p-12 text-center">
-            <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-            <p className="text-xs font-semibold text-slate-700">No matching users found</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">
+            <Users className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-foreground">No matching users found</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
               Adjust your search filter or add a new account.
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-left">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    User
-                  </th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Role
-                  </th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Status
-                  </th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Created
-                  </th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 text-right">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {filteredUsers.map((member) => {
-                  const isSelf = member.id === currentUser?.id;
-                  const isBusy = busyUserId === member.id;
-                  return (
-                    <tr key={member.id} className="hover:bg-slate-50/80 transition">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center space-x-3">
-                          <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold border shrink-0 ${
-                              member.role === 'superadmin'
-                                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                : 'bg-blue-50 text-blue-700 border-blue-200'
-                            }`}
-                          >
-                            {getInitials(member.fullName)}
-                          </div>
-                          <div>
-                            <div className="flex items-center space-x-1.5">
-                              <span className="text-xs font-semibold text-slate-900">
-                                {member.fullName}
-                              </span>
-                              {isSelf && (
-                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                                  You
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-slate-500">
-                              {member.email} &middot; {member.title}
+          <>
+            {/* Mobile Stacked User Cards */}
+            <div className="md:hidden divide-y divide-border">
+              {filteredUsers.map((member) => {
+                const isSelf = member.id === currentUser?.id;
+                const isBusy = busyUserId === member.id;
+                return (
+                  <div key={member.id} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className={`h-9 w-9 rounded-md flex items-center justify-center text-xs font-semibold border shrink-0 ${
+                            member.role === 'superadmin'
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'bg-secondary text-secondary-foreground border-border'
+                          }`}
+                        >
+                          {getInitials(member.fullName)}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-semibold text-foreground truncate">
+                              {member.fullName}
                             </p>
+                            {isSelf && <Badge variant="outline">You</Badge>}
                           </div>
+                          <p className="text-xs text-muted-foreground truncate">{member.email}</p>
                         </div>
-                      </td>
+                      </div>
+                      {member.isActive ? (
+                        <Badge variant="success">Active</Badge>
+                      ) : (
+                        <Badge variant="destructive">Inactive</Badge>
+                      )}
+                    </div>
 
-                      <td className="px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5">
                         {member.role === 'superadmin' ? (
-                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            <ShieldCheck className="w-3 h-3" />
+                          <Badge variant="default">
+                            <ShieldCheck className="h-3 w-3" />
                             <span>Superadmin</span>
-                          </span>
+                          </Badge>
                         ) : (
-                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                            <UserCheck className="w-3 h-3 text-slate-500" />
-                            <span>Normal User</span>
-                          </span>
+                          <Badge variant="secondary">Normal User</Badge>
                         )}
-                      </td>
+                        <span>&middot; {member.title}</span>
+                      </div>
+                      <span>Joined {new Date(member.createdAt).toLocaleDateString()}</span>
+                    </div>
 
-                      <td className="px-4 py-3">
-                        {member.isActive ? (
-                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            <span>Active</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200">
-                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                            <span>Deactivated</span>
-                          </span>
-                        )}
-                      </td>
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenEdit(member)}
+                        className="flex-1 text-xs"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                        <span>Edit</span>
+                      </Button>
 
-                      <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
-                        {new Date(member.createdAt).toLocaleDateString()}
-                      </td>
-
-                      <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center space-x-1.5">
-                          <button
+                      {!isSelf && (
+                        <>
+                          <Button
                             type="button"
-                            onClick={() => handleOpenEdit(member)}
-                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded text-[11px] font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 transition"
+                            variant="outline"
+                            size="sm"
+                            disabled={isBusy}
+                            onClick={() => void handleToggleActive(member)}
+                            className="flex-1 text-xs"
                           >
-                            <Edit3 className="w-3 h-3" />
-                            <span>Edit</span>
-                          </button>
+                            <Power className="h-3.5 w-3.5" />
+                            <span>{member.isActive ? 'Deactivate' : 'Activate'}</span>
+                          </Button>
 
-                          {!isSelf && (
-                            <>
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => void handleToggleActive(member)}
-                                className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded text-[11px] font-medium border transition disabled:opacity-50 ${
-                                  member.isActive
-                                    ? 'text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-200'
-                                    : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200'
-                                }`}
-                              >
-                                <Power className="w-3 h-3" />
-                                <span>{member.isActive ? 'Deactivate' : 'Activate'}</span>
-                              </button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            disabled={isBusy}
+                            aria-label={`Delete ${member.fullName}`}
+                            onClick={() => {
+                              setModalError(null);
+                              setDeletingUser(member);
+                            }}
+                            className="text-rose-600 hover:bg-rose-50 hover:border-rose-200 shrink-0"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
 
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => {
-                                  setModalError(null);
-                                  setDeletingUser(member);
-                                }}
-                                title="Delete user"
-                                className="inline-flex items-center p-1.5 rounded text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition disabled:opacity-50"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </>
+            {/* Desktop shadcn Table */}
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>User</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredUsers.map((member) => {
+                    const isSelf = member.id === currentUser?.id;
+                    const isBusy = busyUserId === member.id;
+                    return (
+                      <TableRow key={member.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`h-8 w-8 rounded-md flex items-center justify-center text-xs font-semibold border shrink-0 ${
+                                member.role === 'superadmin'
+                                  ? 'bg-primary text-primary-foreground border-primary'
+                                  : 'bg-secondary text-secondary-foreground border-border'
+                              }`}
+                            >
+                              {getInitials(member.fullName)}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-foreground">
+                                  {member.fullName}
+                                </span>
+                                {isSelf && <Badge variant="outline">You</Badge>}
+                              </div>
+                              <p className="text-[11px] text-muted-foreground">
+                                {member.email} &middot; {member.title}
+                              </p>
+                            </div>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          {member.role === 'superadmin' ? (
+                            <Badge variant="default">
+                              <ShieldCheck className="h-3 w-3" />
+                              <span>Superadmin</span>
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">Normal User</Badge>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          {member.isActive ? (
+                            <Badge variant="success">Active</Badge>
+                          ) : (
+                            <Badge variant="destructive">Deactivated</Badge>
+                          )}
+                        </TableCell>
+
+                        <TableCell className="text-muted-foreground whitespace-nowrap">
+                          {new Date(member.createdAt).toLocaleDateString()}
+                        </TableCell>
+
+                        <TableCell className="text-right whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1.5">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenEdit(member)}
+                              className="h-7 px-2.5 text-xs"
+                            >
+                              <Edit3 className="h-3 w-3" />
+                              <span>Edit</span>
+                            </Button>
+
+                            {!isSelf && (
+                              <>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={isBusy}
+                                  onClick={() => void handleToggleActive(member)}
+                                  className="h-7 px-2.5 text-xs"
+                                >
+                                  <Power className="h-3 w-3" />
+                                  <span>{member.isActive ? 'Deactivate' : 'Activate'}</span>
+                                </Button>
+
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={isBusy}
+                                  aria-label={`Delete ${member.fullName}`}
+                                  onClick={() => {
+                                    setModalError(null);
+                                    setDeletingUser(member);
+                                  }}
+                                  className="h-7 w-7 text-rose-600 hover:bg-rose-50"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
       </Card>
 
-      {/* Create User Modal */}
-      {isCreateOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-[1px] flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <UserPlus className="w-4 h-4 text-blue-700" />
-                <h2 className="text-sm font-bold text-slate-900">Create New User</h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsCreateOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded"
+      {/* Create User Dialog */}
+      <Dialog
+        open={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        disableClose={isSubmitting}
+        title="Create New User"
+        description="Provision a new Superadmin or Claims Adjuster account."
+        maxWidthClassName="max-w-md"
+      >
+        <form onSubmit={handleCreateSubmit} className="space-y-4">
+          {modalError && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {modalError}
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="cu-name">Full Name</Label>
+            <Input
+              id="cu-name"
+              type="text"
+              required
+              value={createForm.fullName}
+              onChange={(e) => setCreateForm((f) => ({ ...f, fullName: e.target.value }))}
+              placeholder="Alex Morgan"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="cu-email">Work Email</Label>
+            <Input
+              id="cu-email"
+              type="email"
+              required
+              value={createForm.email}
+              onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
+              placeholder="alex@acme-insurance.com"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="cu-role">Role</Label>
+              <Select
+                id="cu-role"
+                value={createForm.role}
+                onChange={(e) => setCreateForm((f) => ({ ...f, role: e.target.value as UserRole }))}
               >
-                <X className="w-4 h-4" />
-              </button>
+                <option value="user">Normal User (Adjuster)</option>
+                <option value="superadmin">Superadmin</option>
+              </Select>
             </div>
 
-            <form onSubmit={handleCreateSubmit} className="p-5 space-y-3.5">
-              {modalError && (
-                <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                  {modalError}
-                </div>
-              )}
+            <div className="space-y-1.5">
+              <Label htmlFor="cu-title">Job Title</Label>
+              <Input
+                id="cu-title"
+                type="text"
+                required
+                value={createForm.title}
+                onChange={(e) => setCreateForm((f) => ({ ...f, title: e.target.value }))}
+                placeholder="Claims Adjuster"
+              />
+            </div>
+          </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
-                <input
+          <div className="space-y-1.5">
+            <Label htmlFor="cu-password">Temporary Password (min. 8 characters)</Label>
+            <Input
+              id="cu-password"
+              type="password"
+              required
+              minLength={8}
+              value={createForm.password}
+              onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
+              placeholder="At least 8 characters"
+            />
+          </div>
+
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-3 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsCreateOpen(false)}
+              className="w-full sm:w-auto"
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              <span>Create Account</span>
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog
+        open={Boolean(editingUser)}
+        onClose={() => setEditingUser(null)}
+        disableClose={isSubmitting}
+        title={editingUser ? `Edit User — ${editingUser.fullName}` : 'Edit User'}
+        maxWidthClassName="max-w-md"
+      >
+        {editingUser && (
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            {modalError && (
+              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {modalError}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="eu-email">Email</Label>
+              <Input id="eu-email" type="email" disabled value={editForm.email} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="eu-name">Full Name</Label>
+              <Input
+                id="eu-name"
+                type="text"
+                required
+                value={editForm.fullName}
+                onChange={(e) => setEditForm((f) => ({ ...f, fullName: e.target.value }))}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="eu-role">Role</Label>
+                <Select
+                  id="eu-role"
+                  value={editForm.role}
+                  disabled={editingUser.id === currentUser?.id}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, role: e.target.value as UserRole }))
+                  }
+                >
+                  <option value="user">Normal User (Adjuster)</option>
+                  <option value="superadmin">Superadmin</option>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="eu-title">Job Title</Label>
+                <Input
+                  id="eu-title"
                   type="text"
                   required
-                  value={createForm.fullName}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, fullName: e.target.value }))}
-                  placeholder="Alex Morgan"
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  value={editForm.title}
+                  onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
                 />
               </div>
+            </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Work Email</label>
-                <input
-                  type="email"
-                  required
-                  value={createForm.email}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
-                  placeholder="alex@acme-insurance.com"
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
-                />
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="eu-password">Reset Password (optional)</Label>
+              <Input
+                id="eu-password"
+                type="password"
+                minLength={8}
+                value={editForm.password}
+                onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))}
+                placeholder="Leave blank to keep existing password"
+              />
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Role</label>
-                  <select
-                    value={createForm.role}
-                    onChange={(e) =>
-                      setCreateForm((f) => ({ ...f, role: e.target.value as UserRole }))
-                    }
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
-                  >
-                    <option value="user">Normal User (Adjuster)</option>
-                    <option value="superadmin">Superadmin</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Job Title</label>
-                  <input
-                    type="text"
-                    required
-                    value={createForm.title}
-                    onChange={(e) => setCreateForm((f) => ({ ...f, title: e.target.value }))}
-                    placeholder="Claims Adjuster"
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Temporary Password (min. 8 characters)
-                </label>
-                <input
-                  type="password"
-                  required
-                  minLength={8}
-                  value={createForm.password}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
-                  placeholder="At least 8 characters"
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-end space-x-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateOpen(false)}
-                  className="px-3.5 py-2 rounded-md text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-md text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-60"
-                >
-                  {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Create Account</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Edit User Modal */}
-      {editingUser && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-[1px] flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Edit3 className="w-4 h-4 text-blue-700" />
-                <h2 className="text-sm font-bold text-slate-900">Edit User — {editingUser.fullName}</h2>
-              </div>
-              <button
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-3 border-t border-border">
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => setEditingUser(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded"
+                className="w-full sm:w-auto"
               >
-                <X className="w-4 h-4" />
-              </button>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
+                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                <span>Save Changes</span>
+              </Button>
             </div>
+          </form>
+        )}
+      </Dialog>
 
-            <form onSubmit={handleEditSubmit} className="p-5 space-y-3.5">
-              {modalError && (
-                <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                  {modalError}
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  disabled
-                  value={editForm.email}
-                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-md bg-slate-50 text-slate-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={editForm.fullName}
-                  onChange={(e) => setEditForm((f) => ({ ...f, fullName: e.target.value }))}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Role</label>
-                  <select
-                    value={editForm.role}
-                    disabled={editingUser.id === currentUser?.id}
-                    onChange={(e) =>
-                      setEditForm((f) => ({ ...f, role: e.target.value as UserRole }))
-                    }
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md bg-white disabled:bg-slate-50 disabled:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                  >
-                    <option value="user">Normal User (Adjuster)</option>
-                    <option value="superadmin">Superadmin</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Job Title</label>
-                  <input
-                    type="text"
-                    required
-                    value={editForm.title}
-                    onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Reset Password (optional)
-                </label>
-                <input
-                  type="password"
-                  minLength={8}
-                  value={editForm.password}
-                  onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))}
-                  placeholder="Leave blank to keep existing password"
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-end space-x-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingUser(null)}
-                  className="px-3.5 py-2 rounded-md text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-md text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-60"
-                >
-                  {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Save Changes</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {deletingUser && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-[1px] flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-xl shadow-xl w-full max-w-sm p-5 space-y-4">
-            <div className="flex items-start space-x-3">
-              <div className="w-9 h-9 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center shrink-0">
-                <Trash2 className="w-4 h-4 text-rose-600" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold text-slate-900">Delete user account?</h2>
-                <p className="text-xs text-slate-600 mt-1">
-                  This permanently removes <strong>{deletingUser.fullName}</strong> ({deletingUser.email}) from Acme Insurance.
-                </p>
-              </div>
-            </div>
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={Boolean(deletingUser)}
+        onClose={() => setDeletingUser(null)}
+        disableClose={isSubmitting}
+        title="Delete user account?"
+        maxWidthClassName="max-w-sm"
+      >
+        {deletingUser && (
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              This permanently removes <strong className="text-foreground">{deletingUser.fullName}</strong>{' '}
+              ({deletingUser.email}) from Acme Insurance.
+            </p>
 
             {modalError && (
               <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -756,27 +807,29 @@ export const UsersPage: React.FC = () => {
               </div>
             )}
 
-            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
-              <button
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2 border-t border-border">
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => setDeletingUser(null)}
-                className="px-3.5 py-2 rounded-md text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300"
+                className="w-full sm:w-auto"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="destructive"
                 disabled={isSubmitting}
                 onClick={() => void handleConfirmDelete()}
-                className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-md text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60"
+                className="w-full sm:w-auto"
               >
-                {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 <span>Delete User</span>
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Dialog>
     </div>
   );
 };

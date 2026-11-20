@@ -1,6 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Claim, ClaimCategory, RiskLevel } from '../types/claim';
-import { X, PlusCircle, AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
+import { Dialog } from './ui/dialog';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Select } from './ui/select';
+import { Textarea } from './ui/textarea';
 
 interface NewClaimModalProps {
   isOpen: boolean;
@@ -50,17 +56,6 @@ export const NewClaimModal: React.FC<NewClaimModalProps> = ({
     setSubmitError(null);
   };
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isSubmitting) onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isSubmitting, onClose]);
-
-  if (!isOpen) return null;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -71,7 +66,7 @@ export const NewClaimModal: React.FC<NewClaimModalProps> = ({
       const timestamp = now.toISOString();
       const currentYear = now.getFullYear();
       const uniqueSuffix = Date.now().toString().slice(-5);
-      const randomIdSuffix = Math.floor(1000 + Math.random() * 9000);
+      const randomIdSuffix = Math.floor(100000 + Math.random() * 900000);
       const newClaimNumber = `CLM-${currentYear}-${randomIdSuffix}`;
 
       let riskScore = 15;
@@ -120,7 +115,7 @@ export const NewClaimModal: React.FC<NewClaimModalProps> = ({
         },
         incidentDate: new Date(Date.now() - 86400000 * 2).toISOString().slice(0, 10),
         submittedAt: timestamp,
-        incidentLocation: 'Chicago Metropolitan Area, IL',
+        incidentLocation: 'Chicago, IL',
         claimedAmount: Number(claimedAmount),
         suggestedPayout: Math.max(0, Number(claimedAmount) - Number(deductible)),
         riskScore,
@@ -171,224 +166,157 @@ export const NewClaimModal: React.FC<NewClaimModalProps> = ({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="File New Claim"
-      onClick={() => {
-        if (!isSubmitting) onClose();
-      }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      disableClose={isSubmitting}
+      title="File New Claim"
+      description="Enter policyholder and incident details to add a claim to the review queue."
+      maxWidthClassName="max-w-lg"
     >
-      <div
-        className="bg-white border border-slate-200 rounded-lg max-w-lg w-full overflow-hidden shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50">
-          <div className="flex items-center space-x-2">
-            <PlusCircle className="w-4 h-4 text-blue-700" />
-            <h3 className="text-sm font-semibold text-slate-900">File New Claim</h3>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <div className="space-y-1.5">
+            <Label htmlFor="nc-customer-name">Customer Full Name</Label>
+            <Input
+              id="nc-customer-name"
+              type="text"
+              required
+              placeholder="e.g. Jordan Alvarez"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+            />
           </div>
-          <button
-            type="button"
-            aria-label="Close new claim modal"
-            disabled={isSubmitting}
-            onClick={onClose}
-            className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition disabled:opacity-50"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="space-y-1.5">
+            <Label htmlFor="nc-customer-email">Customer Email</Label>
+            <Input
+              id="nc-customer-email"
+              type="email"
+              required
+              placeholder="jordan.alvarez@example.com"
+              value={customerEmail}
+              onChange={(e) => setCustomerEmail(e.target.value)}
+            />
+          </div>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-3.5 text-xs">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="nc-customer-name" className="block text-slate-700 font-semibold mb-1">
-                Customer Full Name
-              </label>
-              <input
-                id="nc-customer-name"
-                type="text"
-                required
-                placeholder="e.g. Jordan Alvarez"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                className="w-full bg-white text-slate-900 rounded border border-slate-300 px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-sm"
-              />
-            </div>
-            <div>
-              <label htmlFor="nc-customer-email" className="block text-slate-700 font-semibold mb-1">
-                Customer Email
-              </label>
-              <input
-                id="nc-customer-email"
-                type="email"
-                required
-                placeholder="jordan.alvarez@example.com"
-                value={customerEmail}
-                onChange={(e) => setCustomerEmail(e.target.value)}
-                className="w-full bg-white text-slate-900 rounded border border-slate-300 px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-sm"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label htmlFor="nc-category" className="block text-slate-700 font-semibold mb-1">
-                Line of Business
-              </label>
-              <select
-                id="nc-category"
-                value={category}
-                onChange={(e) => setCategory(e.target.value as ClaimCategory)}
-                className="w-full bg-white text-slate-900 rounded border border-slate-300 px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-sm"
-              >
-                <option value="auto">Auto</option>
-                <option value="property">Property</option>
-                <option value="health">Health</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor="nc-claimed" className="block text-slate-700 font-semibold mb-1">
-                Claimed ($)
-              </label>
-              <input
-                id="nc-claimed"
-                type="number"
-                required
-                min={100}
-                value={claimedAmount}
-                onChange={(e) => setClaimedAmount(Number(e.target.value))}
-                className="w-full bg-white text-slate-900 rounded border border-slate-300 px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-sm"
-              />
-            </div>
-            <div>
-              <label htmlFor="nc-deductible" className="block text-slate-700 font-semibold mb-1">
-                Deductible ($)
-              </label>
-              <input
-                id="nc-deductible"
-                type="number"
-                required
-                min={0}
-                value={deductible}
-                onChange={(e) => setDeductible(Number(e.target.value))}
-                className="w-full bg-white text-slate-900 rounded border border-slate-300 px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-sm"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="nc-policy" className="block text-slate-700 font-semibold mb-1">
-              Policy Identifier
-            </label>
-            <input
-              id="nc-policy"
-              type="text"
-              placeholder="Leave blank to auto-generate (e.g. POL-AUT-44910)"
-              value={policyNumber}
-              onChange={(e) => setPolicyNumber(e.target.value)}
-              className="w-full bg-white text-slate-900 rounded border border-slate-300 px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-sm font-mono"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="nc-title" className="block text-slate-700 font-semibold mb-1">
-              Incident Headline / Summary
-            </label>
-            <input
-              id="nc-title"
-              type="text"
-              required
-              placeholder="e.g. Rear bumper impact in commercial parking lot"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-white text-slate-900 rounded border border-slate-300 px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-sm"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="nc-statement" className="block text-slate-700 font-semibold mb-1">
-              Customer Statement
-            </label>
-            <textarea
-              id="nc-statement"
-              rows={2}
-              required
-              placeholder="Describe the incident details, damages, and any responding parties..."
-              value={statement}
-              onChange={(e) => setStatement(e.target.value)}
-              className="w-full bg-white text-slate-900 rounded border border-slate-300 p-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-sm"
-            />
-          </div>
-
-          <div>
-            <span className="block text-slate-700 font-semibold mb-1.5">Initial Risk Triage</span>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setRiskPreset('low')}
-                className={`py-1.5 rounded text-xs font-semibold capitalize border transition ${
-                  riskPreset === 'low'
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-sm'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                }`}
-              >
-                Low Risk
-              </button>
-              <button
-                type="button"
-                onClick={() => setRiskPreset('medium')}
-                className={`py-1.5 rounded text-xs font-semibold capitalize border transition ${
-                  riskPreset === 'medium'
-                    ? 'bg-amber-50 text-amber-800 border-amber-300 shadow-sm'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                }`}
-              >
-                Medium Risk
-              </button>
-              <button
-                type="button"
-                onClick={() => setRiskPreset('high')}
-                className={`py-1.5 rounded text-xs font-semibold capitalize border transition ${
-                  riskPreset === 'high'
-                    ? 'bg-rose-50 text-rose-800 border-rose-300 shadow-sm'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                }`}
-              >
-                High Risk
-              </button>
-            </div>
-          </div>
-
-          {submitError && (
-            <div className="p-2 rounded bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center space-x-1.5">
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              <span>{submitError}</span>
-            </div>
-          )}
-
-          <div className="flex items-center justify-end space-x-2.5 pt-3 border-t border-slate-200">
-            <button
-              type="button"
-              disabled={isSubmitting}
-              onClick={onClose}
-              className="px-3.5 py-1.5 rounded text-xs font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 disabled:opacity-50"
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <div className="space-y-1.5">
+            <Label htmlFor="nc-category">Line of Business</Label>
+            <Select
+              id="nc-category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value as ClaimCategory)}
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-1.5 rounded text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 shadow-sm transition disabled:opacity-50"
-            >
-              {isSubmitting ? 'Submitting...' : 'Submit to Queue'}
-            </button>
+              <option value="auto">Auto</option>
+              <option value="property">Property</option>
+              <option value="health">Health</option>
+            </Select>
           </div>
-        </form>
-      </div>
-    </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="nc-claimed">Claimed ($)</Label>
+            <Input
+              id="nc-claimed"
+              type="number"
+              required
+              min={100}
+              value={claimedAmount}
+              onChange={(e) => setClaimedAmount(Number(e.target.value))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="nc-deductible">Deductible ($)</Label>
+            <Input
+              id="nc-deductible"
+              type="number"
+              required
+              min={0}
+              value={deductible}
+              onChange={(e) => setDeductible(Number(e.target.value))}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="nc-policy">Policy Number</Label>
+          <Input
+            id="nc-policy"
+            type="text"
+            placeholder="Leave blank to auto-generate (e.g. POL-AUT-44910)"
+            value={policyNumber}
+            onChange={(e) => setPolicyNumber(e.target.value)}
+            className="font-mono"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="nc-title">Incident Headline</Label>
+          <Input
+            id="nc-title"
+            type="text"
+            required
+            placeholder="e.g. Rear bumper impact in commercial parking lot"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="nc-statement">Customer Statement</Label>
+          <Textarea
+            id="nc-statement"
+            rows={3}
+            required
+            placeholder="Describe the incident details, damages, and any responding parties..."
+            value={statement}
+            onChange={(e) => setStatement(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Initial Risk Triage</Label>
+          <div className="grid grid-cols-3 gap-2">
+            {(['low', 'medium', 'high'] as const).map((level) => {
+              const active = riskPreset === level;
+              return (
+                <Button
+                  key={level}
+                  type="button"
+                  size="sm"
+                  variant={active ? 'default' : 'outline'}
+                  onClick={() => setRiskPreset(level)}
+                  className="capitalize"
+                >
+                  {level} Risk
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+
+        {submitError && (
+          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{submitError}</span>
+          </div>
+        )}
+
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-3 border-t border-border">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isSubmitting}
+            onClick={onClose}
+            className="w-full sm:w-auto"
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
+            {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            <span>{isSubmitting ? 'Submitting...' : 'Submit Claim'}</span>
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 };

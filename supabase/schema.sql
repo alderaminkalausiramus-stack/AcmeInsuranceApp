@@ -149,12 +149,100 @@ create table if not exists public.claims (
   updated_at timestamptz not null default now()
 );
 
-create index if not exists idx_claims_status on public.claims (status);
-create index if not exists idx_claims_category on public.claims (category);
-create index if not exists idx_claims_risk_level on public.claims (risk_level);
-create index if not exists idx_claims_submitted_at on public.claims (submitted_at desc);
-create index if not exists idx_claims_claimed_amount on public.claims (claimed_amount desc);
-create index if not exists idx_claims_risk_score on public.claims (risk_score desc);
+-- Secondary indexes on public.claims are intentionally omitted here so you can
+-- diagnose slow queries on 90k+ rows and add targeted B-tree / composite / GIN indexes.
+
+create or replace function public.get_dashboard_summary()
+returns jsonb
+language sql
+stable
+security invoker
+set search_path = ''
+set statement_timeout = '25s'
+as $$
+  with grouped as (
+    select
+      date_trunc('month', submitted_at at time zone 'UTC') as month_bucket,
+      category,
+      status,
+      risk_level,
+      priority,
+      count(*)::int as cnt,
+      coalesce(sum(claimed_amount), 0)::numeric as sum_claimed,
+      coalesce(sum(case when status = 'approved' then coalesce(approved_payout, suggested_payout, 0) else 0 end), 0)::numeric as sum_disbursed
+    from public.claims
+    group by 1, 2, 3, 4, 5
+  ),
+  totals as (
+    select
+      coalesce(sum(cnt), 0)::int as total_claims,
+      coalesce(sum(sum_claimed), 0)::numeric as total_claimed,
+      coalesce(sum(sum_disbursed), 0)::numeric as total_disbursed,
+      coalesce(sum(cnt) filter (where status = 'pending'), 0)::int as pending,
+      coalesce(sum(cnt) filter (where status = 'in_review'), 0)::int as in_review,
+      coalesce(sum(cnt) filter (where status = 'info_requested'), 0)::int as needs_info,
+      coalesce(sum(cnt) filter (where status = 'approved'), 0)::int as approved,
+      coalesce(sum(cnt) filter (where status = 'rejected'), 0)::int as denied,
+      coalesce(sum(cnt) filter (where risk_level = 'high'), 0)::int as high_risk,
+      coalesce(sum(cnt) filter (where priority = 'urgent'), 0)::int as urgent,
+      coalesce(sum(cnt) filter (where category = 'auto'), 0)::int as auto_count,
+      coalesce(sum(sum_claimed) filter (where category = 'auto'), 0)::numeric as auto_amount,
+      coalesce(sum(cnt) filter (where category = 'property'), 0)::int as property_count,
+      coalesce(sum(sum_claimed) filter (where category = 'property'), 0)::numeric as property_amount,
+      coalesce(sum(cnt) filter (where category = 'health'), 0)::int as health_count,
+      coalesce(sum(sum_claimed) filter (where category = 'health'), 0)::numeric as health_amount
+    from grouped
+  ),
+  monthly as (
+    select
+      to_char(month_bucket, 'YYYY-MM') as sort_key,
+      to_char(month_bucket, 'Mon YY') as label,
+      coalesce(sum(cnt), 0)::int as claims,
+      coalesce(sum(sum_claimed), 0)::numeric as claimed_amount,
+      coalesce(sum(sum_disbursed), 0)::numeric as disbursed
+    from grouped
+    group by month_bucket
+    order by month_bucket desc
+    limit 12
+  )
+  select jsonb_build_object(
+    'totalClaims', t.total_claims,
+    'totalClaimed', t.total_claimed,
+    'totalDisbursed', t.total_disbursed,
+    'pending', t.pending,
+    'inReview', t.in_review,
+    'needsInfo', t.needs_info,
+    'approved', t.approved,
+    'denied', t.denied,
+    'highRisk', t.high_risk,
+    'urgent', t.urgent,
+    'byCategory', jsonb_build_object(
+      'auto', jsonb_build_object('count', t.auto_count, 'amount', t.auto_amount),
+      'property', jsonb_build_object('count', t.property_count, 'amount', t.property_amount),
+      'health', jsonb_build_object('count', t.health_count, 'amount', t.health_amount)
+    ),
+    'monthlySeries', coalesce(
+      (
+        select jsonb_agg(
+          jsonb_build_object(
+            'sortKey', m.sort_key,
+            'label', m.label,
+            'claims', m.claims,
+            'claimedAmount', m.claimed_amount,
+            'disbursed', m.disbursed
+          )
+          order by m.sort_key asc
+        )
+        from monthly m
+      ),
+      '[]'::jsonb
+    )
+  )
+  from totals t;
+$$;
+
+revoke all on function public.get_dashboard_summary() from public, anon;
+grant execute on function public.get_dashboard_summary() to authenticated, service_role;
 
 create or replace function public.set_claims_updated_at()
 returns trigger
